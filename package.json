@@ -1,0 +1,33 @@
+{
+  "name": "palmchain",
+  "version": "1.0.0",
+  "description": "PalmChain - Blockchain-based Palm-Jaggery Traceability & Marketplace Platform",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server",
+    "contracts"
+  ],
+  "scripts": {
+    "dev:client": "npm run dev --prefix client",
+    "dev:server": "npm run dev --prefix server",
+    "build:client": "npm run build --prefix client",
+    "compile:contracts": "npm run compile --prefix contracts",
+    "test:contracts": "npm run test --prefix contracts",
+    "start:server": "npm start --prefix server"
+  },
+  "keywords": [
+    "palmchain",
+    "blockchain",
+    "traceability",
+    "palm-jaggery",
+    "karupatti",
+    "ethereum",
+    "sepolia",
+    "supabase",
+    "react",
+    "express"
+  ],
+  "author": "",
+  "license": "ISC"
+}
