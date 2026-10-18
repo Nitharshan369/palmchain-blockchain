@@ -4,20 +4,56 @@
 
 @layer base {
   body {
-    @apply bg-stone-50 text-stone-900 antialiased font-sans;
+    @apply bg-cream-50 text-earth-950 antialiased font-sans selection:bg-gold-200 selection:text-forest-950;
   }
 }
 
-/* Custom scrollbars & glassmorphism utilities */
-.glass-panel {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(229, 231, 235, 0.6);
+/* Custom PalmChain Glassmorphic & Elevated Surfaces */
+.card-warm {
+  @apply bg-white rounded-2xl border border-cream-200/90 shadow-warm transition-all duration-200;
 }
 
-.glass-card {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(200, 205, 215, 0.3);
+.card-warm-hover {
+  @apply card-warm hover:shadow-warm-lg hover:border-gold-300/80 hover:-translate-y-0.5;
+}
+
+.glass-nav {
+  background: rgba(253, 251, 247, 0.92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(235, 220, 184, 0.6);
+}
+
+.badge-forest {
+  @apply bg-forest-100 text-forest-800 border border-forest-200/70;
+}
+
+.badge-gold {
+  @apply bg-gold-100 text-gold-900 border border-gold-200/80;
+}
+
+.badge-earth {
+  @apply bg-earth-100 text-earth-800 border border-earth-200/80;
+}
+
+/* Palm Frond Subtle Gradient Background */
+.bg-palm-gradient {
+  background: radial-gradient(circle at 10% 20%, rgba(22, 78, 46, 0.04) 0%, transparent 40%),
+              radial-gradient(circle at 90% 80%, rgba(201, 151, 56, 0.05) 0%, transparent 45%);
+}
+
+/* Sleek Scrollbar */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: #FAF4E8;
+}
+::-webkit-scrollbar-thumb {
+  background: #DEC593;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #BC9651;
 }
