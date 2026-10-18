@@ -19,6 +19,7 @@ import BatchesManagement from './pages/producer/BatchesManagement';
 import CreateBatch from './pages/producer/CreateBatch';
 import SalesManagement from './pages/producer/SalesManagement';
 import ProducerAnalytics from './pages/producer/ProducerAnalytics';
+import ProducerRegistration from './pages/producer/ProducerRegistration';
 
 // Verifier Pages
 import VerifierDashboard from './pages/verifier/VerifierDashboard';
@@ -53,10 +54,12 @@ export default function App() {
           <Route path="create-batch" element={<CreateBatch />} />
           <Route path="sales" element={<SalesManagement />} />
           <Route path="analytics" element={<ProducerAnalytics />} />
+          <Route path="register" element={<ProducerRegistration />} />
         </Route>
 
         {/* Public & Role Pages with Main Navigation and Footer */}
         <Route element={<MainShell />}>
+          <Route path="/register" element={<Navigate to="/producer/register" replace />} />
           {/* 1. Public Home */}
           <Route path="/" element={<Home />} />
 

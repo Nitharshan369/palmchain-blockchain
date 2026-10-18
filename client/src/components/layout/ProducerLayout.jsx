@@ -12,13 +12,16 @@ import {
   ExternalLink,
   ChevronRight,
   ShieldCheck,
-  Bell
+  Bell,
+  UserCheck
 } from 'lucide-react';
 import WalletButton from '../common/WalletButton';
+import { useWallet } from '../../context/WalletContext';
 
 export default function ProducerLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const { isConnected, shortAddress, onChainProducer, profile } = useWallet();
 
   const navItems = [
     { label: 'Overview', path: '/producer/dashboard', icon: LayoutDashboard },
@@ -27,6 +30,7 @@ export default function ProducerLayout() {
     { label: 'Create & Anchor Batch', path: '/producer/create-batch', icon: PlusCircle },
     { label: 'Orders & Sales', path: '/producer/sales', icon: ShoppingBag },
     { label: 'Yield Analytics', path: '/producer/analytics', icon: BarChart3 },
+    { label: 'Register on Chain', path: '/producer/register', icon: UserCheck },
   ];
 
   const isActive = (path) => location.pathname === path;
@@ -81,17 +85,43 @@ export default function ProducerLayout() {
           {/* Producer Profile Snippet */}
           <div className="p-3.5 rounded-2xl bg-forest-900/80 border border-forest-800 space-y-2">
             <div className="flex items-center space-x-2.5">
-              <div className="w-7 h-7 rounded-full bg-gold-400/20 text-gold-300 font-bold text-xs flex items-center justify-center border border-gold-400/40">
-                M
+              <div className="w-7 h-7 rounded-full bg-gold-400/20 text-gold-300 font-bold text-xs flex items-center justify-center border border-gold-400/40 shrink-0">
+                {isConnected ? (onChainProducer.name ? onChainProducer.name.charAt(0).toUpperCase() : 'W') : '–'}
               </div>
               <div className="truncate">
-                <div className="text-xs font-bold text-white truncate">Murugan Cooperative</div>
-                <div className="text-[10px] text-cream-400/80">Tenkasi Grove #4</div>
+                <div className="text-xs font-bold text-white truncate">
+                  {isConnected 
+                    ? (onChainProducer.name || profile?.display_name || 'Palm Producer') 
+                    : 'Wallet Disconnected'}
+                </div>
+                <div className="text-[10px] text-cream-400/80 font-mono">
+                  {isConnected ? shortAddress : 'Connect MetaMask to sign'}
+                </div>
               </div>
             </div>
             <div className="pt-1 flex items-center justify-between text-[10px] text-cream-400/90 font-mono">
-              <span>Status:</span>
-              <span className="text-emerald-400 font-semibold">Authorized Producer</span>
+              <span>On-Chain:</span>
+              <span
+                className={`font-semibold ${
+                  onChainProducer.status === 2
+                    ? 'text-emerald-400'
+                    : onChainProducer.status === 1
+                    ? 'text-amber-400'
+                    : onChainProducer.status === 3
+                    ? 'text-rose-400'
+                    : 'text-stone-400'
+                }`}
+              >
+                {!isConnected
+                  ? 'Disconnected'
+                  : onChainProducer.status === 2
+                  ? 'Verified Producer'
+                  : onChainProducer.status === 1
+                  ? 'Pending Review'
+                  : onChainProducer.status === 3
+                  ? 'Suspended'
+                  : 'Not Registered'}
+              </span>
             </div>
           </div>
 

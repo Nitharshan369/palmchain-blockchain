@@ -333,10 +333,10 @@ export default function Home() {
 
         <div className="flex flex-col sm:flex-row gap-3 shrink-0">
           <Link
-            to="/producer/create-batch"
+            to="/producer/register"
             className="px-6 py-3.5 rounded-xl bg-forest-800 hover:bg-forest-900 text-white font-bold text-xs shadow-xs transition-colors text-center"
           >
-            Create Your First Batch
+            Register as Producer
           </Link>
           <Link
             to="/producer/dashboard"

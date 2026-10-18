@@ -13,13 +13,36 @@ import {
   Sparkles,
   ArrowRight,
   ShieldCheck,
-  Info
+  Info,
+  Clock,
+  AlertTriangle,
+  ExternalLink,
+  RefreshCw
 } from 'lucide-react';
-import { mockTrees, SIMULATION_NOTICE } from '../../data/mockData';
+import { ethers } from 'ethers';
+import { mockTrees } from '../../data/mockData';
 import ConfirmModal from '../../components/common/ConfirmModal';
+import { useWallet } from '../../context/WalletContext';
+import { 
+  isBatchRegistryConfigured, 
+  getBatchRegistryWithSigner, 
+  CONTRACT_ADDRESSES 
+} from '../../contracts';
+import { supabase } from '../../lib/supabase';
 
 export default function CreateBatch() {
   const navigate = useNavigate();
+  const {
+    address,
+    shortAddress,
+    isSepolia,
+    isConnected,
+    isConnecting,
+    connect,
+    switchNetwork,
+    getSigner,
+    onChainProducer,
+  } = useWallet();
 
   const [formData, setFormData] = useState({
     batchId: `PJG-2026-00${Math.floor(Math.random() * 90) + 10}`,
@@ -41,12 +64,18 @@ export default function CreateBatch() {
   const [computedHash, setComputedHash] = useState('');
   const [canonicalJson, setCanonicalJson] = useState('');
   const [confirmAnchorOpen, setConfirmAnchorOpen] = useState(false);
-  const [isAnchoring, setIsAnchoring] = useState(false);
-  const [anchorSuccess, setAnchorSuccess] = useState(false);
 
-  // Simple deterministic client-side SHA-256 simulation
+  // Live transaction states: 'idle' | 'awaiting_signature' | 'pending' | 'confirmed' | 'rejected' | 'failed'
+  const [txState, setTxState] = useState('idle');
+  const [txHash, setTxHash] = useState('');
+  const [blockNumber, setBlockNumber] = useState(null);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const isConfigured = isBatchRegistryConfigured();
+  const isVerifiedProducer = onChainProducer.status === 2;
+
+  // Real cryptographic SHA-256 calculation using ethers.js
   useEffect(() => {
-    // Generate canonical JSON representation
     const canonicalPayload = {
       batchId: formData.batchId.trim().toUpperCase(),
       boilingTempCelsius: parseFloat(formData.boilingTempCelsius) || 0,
@@ -55,26 +84,23 @@ export default function CreateBatch() {
       harvestDate: formData.harvestDate,
       outputKg: parseFloat(formData.outputKg) || 0,
       processingDate: formData.processingDate,
-      producerAddress: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+      producerAddress: address || '0x0000000000000000000000000000000000000000',
       sapBrix: parseFloat(formData.sapBrix) || 0,
       sapVolumeLiters: parseFloat(formData.sapVolumeLiters) || 0,
-      sourceTreeIds: formData.selectedTrees.sort(),
+      sourceTreeIds: formData.selectedTrees.slice().sort(),
     };
 
     const jsonString = JSON.stringify(canonicalPayload, Object.keys(canonicalPayload).sort(), 2);
     setCanonicalJson(jsonString);
 
-    // Deterministic client hash calculation
-    let hashNum = 0;
-    for (let i = 0; i < jsonString.length; i++) {
-      hashNum = (hashNum << 5) - hashNum + jsonString.charCodeAt(i);
-      hashNum |= 0;
+    try {
+      // Real cryptographic SHA-256 digest
+      const realSha256 = ethers.sha256(ethers.toUtf8Bytes(jsonString));
+      setComputedHash(realSha256);
+    } catch (e) {
+      console.warn('Hash computation error:', e);
     }
-    const hex = Math.abs(hashNum).toString(16).padStart(8, '0');
-    // Generate full 64-character hash string
-    const simulated64Hex = (hex + 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855').slice(0, 64);
-    setComputedHash(simulated64Hex);
-  }, [formData]);
+  }, [formData, address]);
 
   const validate = () => {
     const errors = {};
@@ -112,17 +138,95 @@ export default function CreateBatch() {
       return;
     }
     setFormErrors({});
+    setErrorMessage('');
     setConfirmAnchorOpen(true);
   };
 
-  const executeAnchorSimulation = () => {
+  const executeLiveAnchor = async () => {
     setConfirmAnchorOpen(false);
-    setIsAnchoring(true);
 
-    setTimeout(() => {
-      setIsAnchoring(false);
-      setAnchorSuccess(true);
-    }, 1500);
+    if (!isConnected) {
+      setErrorMessage('Please connect your MetaMask wallet.');
+      return;
+    }
+
+    if (!isSepolia) {
+      setErrorMessage('Please switch MetaMask to Ethereum Sepolia.');
+      return;
+    }
+
+    if (!isConfigured) {
+      setErrorMessage(
+        'BatchRegistry contract address is not configured. Deploy the contract and set VITE_BATCH_REGISTRY_ADDRESS in .env to execute live transactions.'
+      );
+      return;
+    }
+
+    if (!isVerifiedProducer) {
+      setErrorMessage(
+        'Only verified producers can create batches on-chain. Please complete producer verification first.'
+      );
+      return;
+    }
+
+    setTxState('awaiting_signature');
+    setErrorMessage('');
+
+    try {
+      const signer = await getSigner();
+      const contract = getBatchRegistryWithSigner(signer);
+
+      const neeraScaled = Math.round((parseFloat(formData.sapVolumeLiters) || 0) * 100);
+      const jaggeryScaled = Math.round((parseFloat(formData.outputKg) || 0) * 100);
+      const dataHash = computedHash.startsWith('0x') ? computedHash : `0x${computedHash}`;
+
+      // Call createBatch(batchId, neeraLiters, jaggeryKg, dataHash)
+      const tx = await contract.createBatch(
+        formData.batchId.trim().toUpperCase(),
+        neeraScaled,
+        jaggeryScaled,
+        dataHash
+      );
+
+      setTxHash(tx.hash);
+      setTxState('pending');
+
+      const receipt = await tx.wait(1);
+      setBlockNumber(receipt.blockNumber);
+      setTxState('confirmed');
+
+      // Sync off-chain Supabase record
+      try {
+        await supabase.from('batches').insert({
+          batch_code: formData.batchId.trim().toUpperCase(),
+          tree_count: formData.selectedTrees.length,
+          neera_quantity_liters: parseFloat(formData.sapVolumeLiters) || 0,
+          jaggery_quantity_kg: parseFloat(formData.outputKg) || 0,
+          metadata_hash: computedHash,
+          blockchain_transaction_hash: tx.hash,
+          blockchain_block_number: receipt.blockNumber,
+          lifecycle_status: 'created',
+          production_date: formData.harvestDate,
+        });
+      } catch (dbErr) {
+        console.warn('Supabase batch insert warning:', dbErr.message);
+      }
+    } catch (err) {
+      console.error('Batch anchoring error:', err);
+      if (err.code === 4001 || err.code === 'ACTION_REJECTED') {
+        setTxState('rejected');
+        setErrorMessage('Transaction signature was rejected in MetaMask.');
+      } else if (err.message && err.message.includes('BatchAlreadyExists')) {
+        setTxState('failed');
+        setErrorMessage(`Batch ${formData.batchId} has already been anchored on-chain.`);
+      } else if (err.message && err.message.includes('NotVerifiedProducer')) {
+        setTxState('failed');
+        setErrorMessage('Caller is not a verified producer on the ProducerRegistry contract.');
+      } else {
+        setTxState('failed');
+        setErrorMessage(err.reason || err.shortMessage || err.message || 'Transaction failed on-chain.');
+      }
+    }
   };
 
   const toggleTreeSelection = (treeCode) => {
@@ -137,14 +241,6 @@ export default function CreateBatch() {
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto py-2">
-      {/* Simulation Notice Banner */}
-      <div className="p-4 rounded-2xl bg-gold-50 border border-gold-300 text-gold-950 flex items-center space-x-2.5 text-xs shadow-xs">
-        <Info className="w-4 h-4 text-gold-700 shrink-0" />
-        <span>
-          <strong>{SIMULATION_NOTICE.badgeText}:</strong> Anchoring will simulate an Ethereum Sepolia transaction and calculate the deterministic SHA-256 hash. Live Web3 wallet submission active in Phase 2.
-        </span>
-      </div>
-
       {/* Header */}
       <div className="border-b border-cream-200 pb-5">
         <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-forest-100 text-forest-800 uppercase tracking-wider">
@@ -154,30 +250,74 @@ export default function CreateBatch() {
           Register & Anchor Harvest Batch
         </h1>
         <p className="text-xs sm:text-sm text-stone-500 mt-0.5">
-          Enter harvest and boiling parameters. PalmChain canonicalizes the metadata and generates a SHA-256 hash for Ethereum anchoring.
+          Enter harvest and boiling parameters. PalmChain canonicalizes the metadata and generates a SHA-256 hash for Ethereum Sepolia anchoring.
         </p>
       </div>
 
+      {/* Contract Configuration Notice */}
+      {!isConfigured && (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 space-y-1.5 text-xs">
+          <div className="flex items-center space-x-2 font-bold text-amber-900">
+            <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+            <span>Integration Boundary: BatchRegistry Contract Not Configured</span>
+          </div>
+          <p className="leading-relaxed text-amber-800">
+            <code>VITE_BATCH_REGISTRY_ADDRESS</code> is not configured in <code>client/.env</code>. To execute live transactions, deploy the contract to Sepolia and set the address in your environment. Live transaction simulation is disabled to preserve blockchain integrity.
+          </p>
+        </div>
+      )}
+
+      {/* Verification Guard Notice */}
+      {isConnected && !isVerifiedProducer && (
+        <div className="p-4 rounded-2xl bg-cream-100 border border-cream-300 text-stone-800 text-xs space-y-2">
+          <div className="flex items-center space-x-2 font-bold text-stone-900">
+            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>On-Chain Producer Verification Required</span>
+          </div>
+          <p className="leading-relaxed">
+            Only verified producers can anchor batches to <code>BatchRegistry.sol</code>. Your current on-chain status is: <strong>{onChainProducer.statusText}</strong>.
+          </p>
+          {onChainProducer.status === 0 && (
+            <Link
+              to="/producer/register"
+              className="inline-flex items-center space-x-1 font-bold text-forest-800 hover:text-forest-950 underline"
+            >
+              <span>Register your wallet on ProducerRegistry</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          )}
+        </div>
+      )}
+
       {/* Success Notification */}
-      {anchorSuccess && (
+      {txState === 'confirmed' && (
         <div className="p-6 rounded-3xl bg-forest-800 text-white shadow-warm space-y-4 animate-in fade-in duration-200">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-2xl bg-forest-700 text-gold-300 flex items-center justify-center font-bold">
               <CheckCircle2 className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="font-bold text-base">Batch Anchored Successfully!</h3>
+              <h3 className="font-bold text-base">Batch Anchored Successfully on Sepolia!</h3>
               <p className="text-xs text-cream-200 font-mono">
-                Batch ID: {formData.batchId} • Hash: {computedHash.slice(0, 16)}...
+                Batch ID: {formData.batchId} • Block #{blockNumber}
               </p>
             </div>
           </div>
 
           <p className="text-xs text-cream-300 leading-relaxed">
-            The batch integrity hash has been registered. You can now inspect its digital passport or generate packaging QR codes.
+            The batch integrity hash has been anchored onto Ethereum Sepolia. Consumers scanning the QR code can now verify its cryptographic integrity.
           </p>
 
-          <div className="flex items-center space-x-3 pt-1">
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <a
+              href={`https://sepolia.etherscan.io/tx/${txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-forest-700 hover:bg-forest-600 text-white font-semibold text-xs transition-colors"
+            >
+              <span>View on Sepolia Etherscan</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
             <Link
               to={`/verify/${formData.batchId}`}
               className="px-4 py-2 rounded-xl bg-gold-500 hover:bg-gold-600 text-earth-950 font-bold text-xs shadow-xs transition-colors"
@@ -186,7 +326,7 @@ export default function CreateBatch() {
             </Link>
             <Link
               to="/producer/batches"
-              className="px-4 py-2 rounded-xl bg-forest-700 hover:bg-forest-600 text-white text-xs font-semibold"
+              className="px-4 py-2 rounded-xl bg-forest-900 hover:bg-forest-950 text-cream-200 text-xs font-semibold"
             >
               Return to Batches
             </Link>
@@ -222,102 +362,52 @@ export default function CreateBatch() {
 
             <div>
               <label className="block font-semibold text-stone-700 mb-1">
-                Output Jaggery Format <span className="text-rose-500">*</span>
+                Final Product Form <span className="text-rose-500">*</span>
               </label>
               <select
                 value={formData.form}
                 onChange={(e) => setFormData({ ...formData, form: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-cream-300 bg-white font-medium focus:outline-hidden"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-cream-300 font-semibold focus:ring-2 focus:ring-gold-400 focus:outline-hidden bg-white"
               >
-                <option value="Solid Block">Solid Block (Coconut Shell Molded)</option>
-                <option value="Granulated Powder">Granulated Sugar Powder</option>
-                <option value="Crystal Candy">Herbal Palm Candy (Panakarkandu)</option>
-                <option value="Liquid Syrup">Liquid Neera Nectar (Syrup)</option>
+                <option value="Solid Block">Solid Block (Coconut Shell Mold)</option>
+                <option value="Granular / Powder">Granular Palm Sugar (Naattu Sarkarai)</option>
+                <option value="Liquid Syrup">Liquid Nectar / Palmyrah Syrup</option>
               </select>
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="block font-semibold text-stone-700 mb-1">
-                Product Title / Packaging Label
-              </label>
-              <input
-                type="text"
-                value={formData.productTitle}
-                onChange={(e) => setFormData({ ...formData, productTitle: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-cream-300 focus:ring-2 focus:ring-gold-400 focus:outline-hidden"
-              />
             </div>
           </div>
         </div>
 
-        {/* Section 2: Dates & Sap Parameters */}
+        {/* Section 2: Sap Harvest & Clarification */}
         <div className="bg-white rounded-3xl p-6 sm:p-7 border border-cream-200 shadow-warm space-y-5">
           <h3 className="text-base font-bold text-earth-950 border-b border-cream-100 pb-3 flex items-center space-x-2">
             <Droplets className="w-4 h-4 text-blue-600" />
-            <span>2. Harvest Dates & Physical Extraction Parameters</span>
+            <span>2. Neera Sap Volume & Clarification</span>
           </h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
             <div>
               <label className="block font-semibold text-stone-700 mb-1">
-                Harvest Date <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="date"
-                value={formData.harvestDate}
-                onChange={(e) => setFormData({ ...formData, harvestDate: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-cream-300 focus:outline-hidden"
-              />
-              {formErrors.harvestDate && (
-                <p className="text-[10px] text-rose-600 mt-1">{formErrors.harvestDate}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block font-semibold text-stone-700 mb-1">
-                Processing Date <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="date"
-                value={formData.processingDate}
-                onChange={(e) => setFormData({ ...formData, processingDate: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-cream-300 focus:outline-hidden"
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold text-stone-700 mb-1">Packaging Date</label>
-              <input
-                type="date"
-                value={formData.packagingDate}
-                onChange={(e) => setFormData({ ...formData, packagingDate: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-cream-300 focus:outline-hidden"
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold text-stone-700 mb-1">
-                Total Neera Sap Volume (Liters)
+                Neera Sap Harvested (Liters) <span className="text-rose-500">*</span>
               </label>
               <input
                 type="number"
+                step="0.1"
                 value={formData.sapVolumeLiters}
                 onChange={(e) => setFormData({ ...formData, sapVolumeLiters: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-cream-300 focus:outline-hidden font-mono"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-cream-300 font-mono focus:ring-2 focus:ring-gold-400 focus:outline-hidden"
               />
             </div>
 
             <div>
               <label className="block font-semibold text-stone-700 mb-1">
-                Sap Sugar Content (°Bx) <span className="text-rose-500">*</span>
+                Measured Sap Brix (° Bx) <span className="text-rose-500">*</span>
               </label>
               <input
                 type="number"
                 step="0.1"
                 value={formData.sapBrix}
                 onChange={(e) => setFormData({ ...formData, sapBrix: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-cream-300 focus:outline-hidden font-mono"
-                placeholder="14.8"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-cream-300 font-mono focus:ring-2 focus:ring-gold-400 focus:outline-hidden"
               />
               {formErrors.sapBrix && (
                 <p className="text-[10px] text-rose-600 mt-1">{formErrors.sapBrix}</p>
@@ -326,43 +416,14 @@ export default function CreateBatch() {
 
             <div>
               <label className="block font-semibold text-stone-700 mb-1">
-                Boiling Temp Peak (°C) <span className="text-rose-500">*</span>
+                Final Jaggery Output (kg) <span className="text-rose-500">*</span>
               </label>
               <input
                 type="number"
-                step="0.5"
-                value={formData.boilingTempCelsius}
-                onChange={(e) => setFormData({ ...formData, boilingTempCelsius: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-cream-300 focus:outline-hidden font-mono"
-                placeholder="118.5"
-              />
-              {formErrors.boilingTempCelsius && (
-                <p className="text-[10px] text-rose-600 mt-1">{formErrors.boilingTempCelsius}</p>
-              )}
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="block font-semibold text-stone-700 mb-1">
-                Natural Clarification Agent
-              </label>
-              <input
-                type="text"
-                value={formData.clarificationAgent}
-                onChange={(e) => setFormData({ ...formData, clarificationAgent: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-cream-300 focus:outline-hidden"
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold text-stone-700 mb-1">
-                Finished Jaggery Output (kg) <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="number"
+                step="0.1"
                 value={formData.outputKg}
                 onChange={(e) => setFormData({ ...formData, outputKg: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-cream-300 focus:outline-hidden font-mono font-bold text-forest-900"
-                placeholder="120"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-cream-300 font-mono focus:ring-2 focus:ring-gold-400 focus:outline-hidden"
               />
               {formErrors.outputKg && (
                 <p className="text-[10px] text-rose-600 mt-1">{formErrors.outputKg}</p>
@@ -371,26 +432,16 @@ export default function CreateBatch() {
           </div>
         </div>
 
-        {/* Section 3: Tree Origin Linking */}
+        {/* Section 3: Linked Palm Trees */}
         <div className="bg-white rounded-3xl p-6 sm:p-7 border border-cream-200 shadow-warm space-y-4">
           <div className="flex items-center justify-between border-b border-cream-100 pb-3">
-            <div>
-              <h3 className="text-base font-bold text-earth-950 flex items-center space-x-2">
-                <Sprout className="w-4 h-4 text-forest-700" />
-                <span>3. Link Harvest to Palmyrah Trees</span>
-              </h3>
-              <p className="text-xs text-stone-500">Select which trees in your grove contributed to this sap run.</p>
-            </div>
-            <span className="text-xs font-mono font-bold text-forest-800 bg-forest-100 px-2.5 py-1 rounded-lg">
-              {formData.selectedTrees.length} Palms Linked
-            </span>
+            <h3 className="text-base font-bold text-earth-950 flex items-center space-x-2">
+              <Sprout className="w-4 h-4 text-forest-700" />
+              <span>3. Linked Source Palmyrah Trees ({formData.selectedTrees.length})</span>
+            </h3>
           </div>
 
-          {formErrors.selectedTrees && (
-            <p className="text-xs text-rose-600 font-semibold">{formErrors.selectedTrees}</p>
-          )}
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {mockTrees.map((tree) => {
               const isSelected = formData.selectedTrees.includes(tree.treeCode);
               return (
@@ -433,7 +484,7 @@ export default function CreateBatch() {
           </div>
 
           <p className="text-xs text-cream-300/80 leading-relaxed">
-            The data above is automatically serialized into sorted key-value JSON and digested. This 64-character hash is what anchors onto the Ethereum Sepolia smart contract.
+            The data above is automatically serialized into sorted canonical JSON and hashed with SHA-256. This 32-byte digest is anchored immutably to <code>BatchRegistry.sol</code> on Ethereum Sepolia.
           </p>
 
           <div className="p-3.5 rounded-2xl bg-forest-900/80 border border-forest-800 space-y-1">
@@ -455,23 +506,64 @@ export default function CreateBatch() {
           </details>
         </div>
 
+        {/* Error notification */}
+        {(txState === 'rejected' || txState === 'failed' || errorMessage) && (
+          <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-900 space-y-1">
+            <div className="flex items-center space-x-1.5 font-bold">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>Notice</span>
+            </div>
+            <p className="text-[11px] leading-relaxed text-stone-700">{errorMessage}</p>
+          </div>
+        )}
+
         {/* Action Button */}
         <div className="pt-2">
-          <button
-            type="submit"
-            disabled={isAnchoring}
-            className="w-full py-4 px-6 rounded-2xl bg-forest-800 hover:bg-forest-900 text-white font-bold text-sm shadow-warm flex items-center justify-center space-x-2 transition-all hover:-translate-y-0.5 disabled:opacity-50"
-          >
-            {isAnchoring ? (
-              <span>Simulating Sepolia Smart Contract Commitment...</span>
-            ) : (
-              <>
-                <Layers className="w-4 h-4 text-gold-300" />
-                <span>Confirm & Anchor Batch on Ethereum Sepolia</span>
-                <ArrowRight className="w-4 h-4 ml-1" />
-              </>
-            )}
-          </button>
+          {!isConnected ? (
+            <button
+              type="button"
+              onClick={() => connect()}
+              className="w-full py-4 px-6 rounded-2xl bg-forest-800 hover:bg-forest-900 text-white font-bold text-sm shadow-warm flex items-center justify-center space-x-2 transition-all"
+            >
+              <Layers className="w-4 h-4 text-gold-300" />
+              <span>Connect MetaMask to Anchor Batch</span>
+            </button>
+          ) : !isSepolia ? (
+            <button
+              type="button"
+              onClick={() => switchNetwork()}
+              className="w-full py-4 px-6 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm shadow-warm flex items-center justify-center space-x-2 transition-all"
+            >
+              <AlertTriangle className="w-4 h-4 text-white" />
+              <span>Switch MetaMask to Ethereum Sepolia</span>
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={
+                !isConfigured ||
+                !isVerifiedProducer ||
+                txState === 'awaiting_signature' ||
+                txState === 'pending'
+              }
+              className="w-full py-4 px-6 rounded-2xl bg-forest-800 hover:bg-forest-900 text-white font-bold text-sm shadow-warm flex items-center justify-center space-x-2 transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {txState === 'awaiting_signature' ? (
+                <span>Please sign in MetaMask...</span>
+              ) : txState === 'pending' ? (
+                <div className="flex items-center space-x-2">
+                  <RefreshCw className="w-4 h-4 text-gold-300 animate-spin" />
+                  <span>Mining on Ethereum Sepolia...</span>
+                </div>
+              ) : (
+                <>
+                  <Layers className="w-4 h-4 text-gold-300" />
+                  <span>Anchor Batch on Ethereum Sepolia</span>
+                  <ArrowRight className="w-4 h-4 ml-1" />
+                </>
+              )}
+            </button>
+          )}
         </div>
       </form>
 
@@ -479,10 +571,10 @@ export default function CreateBatch() {
       <ConfirmModal
         isOpen={confirmAnchorOpen}
         title="Commit Batch Hash to Ethereum Sepolia"
-        message={`You are committing batch ${formData.batchId} (${formData.outputKg} kg of ${formData.form}) with SHA-256 hash ${computedHash.slice(0, 16)}... In Phase 1 preview, this performs a client simulation of the PalmChainRegistry.sol anchorBatch() call.`}
-        confirmLabel="Sign & Anchor"
+        message={`You are committing batch ${formData.batchId} (${formData.outputKg} kg of ${formData.form}) with SHA-256 hash ${computedHash.slice(0, 16)}... This will invoke createBatch() on BatchRegistry.sol on Sepolia.`}
+        confirmLabel="Confirm & Sign"
         cancelLabel="Review Data"
-        onConfirm={executeAnchorSimulation}
+        onConfirm={executeLiveAnchor}
         onCancel={() => setConfirmAnchorOpen(false)}
       />
     </div>
