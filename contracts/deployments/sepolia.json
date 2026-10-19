@@ -1,0 +1,26 @@
+{
+  "network": {
+    "name": "sepolia",
+    "chainId": 11155111
+  },
+  "deployedAt": "2026-10-19T18:22:13.137Z",
+  "deployer": "0x74de526B0CDFB86D682cB293d4006076a2FE6088",
+  "contracts": {
+    "ProducerRegistry": {
+      "address": "0xD4B4BF61a6e70bd4e9B44E3941523c57Ed27d00D",
+      "transactionHash": "0xb6c54cf84cf279ff5ae82383c2f3a0544d688f042d192e41cc4e3f0ca8b36898",
+      "blockNumber": 11949910,
+      "constructorArgs": [],
+      "abiPath": "artifacts/contracts/ProducerRegistry.sol/ProducerRegistry.json"
+    },
+    "BatchRegistry": {
+      "address": "0xB77f75af51Ea8680665A3c5749de7b3e3b2C7829",
+      "transactionHash": "0x2249b265499d29c1f10a20b804b95cacec4ca5baaabcaac3ffb8548f899d15ca",
+      "blockNumber": 11949912,
+      "constructorArgs": [
+        "0xD4B4BF61a6e70bd4e9B44E3941523c57Ed27d00D"
+      ],
+      "abiPath": "artifacts/contracts/BatchRegistry.sol/BatchRegistry.json"
+    }
+  }
+}
