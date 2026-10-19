@@ -1,6 +1,7 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
 import { generateSHA256Hash } from '../utils/hash.js';
+import { mockBatches } from '../data/mockData.js';
 
 const router = express.Router();
 
@@ -10,38 +11,46 @@ const router = express.Router();
  */
 router.get('/', async (req, res) => {
   try {
-    if (!supabase) return res.status(503).json({ error: 'Database not configured' });
+    if (supabase) {
+      const { status, producerId, limit = 20, page = 1 } = req.query;
+      const from = (Number(page) - 1) * Number(limit);
+      const to = from + Number(limit) - 1;
 
-    const { status, producerId, limit = 20, page = 1 } = req.query;
-    const from = (Number(page) - 1) * Number(limit);
-    const to = from + Number(limit) - 1;
+      let query = supabase
+        .from('batches')
+        .select(
+          `*, producer:profiles!batches_producer_id_fkey(id, full_name, organization_name, wallet_address),
+           farm:farms(id, farm_name, region, state)`,
+          { count: 'exact' }
+        )
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
-    let query = supabase
-      .from('batches')
-      .select(
-        `*, producer:profiles!batches_producer_id_fkey(id, full_name, organization_name, wallet_address),
-         farm:farms(id, farm_name, region, state)`,
-        { count: 'exact' }
-      )
-      .order('created_at', { ascending: false })
-      .range(from, to);
+      if (status) query = query.eq('status', status);
+      if (producerId) query = query.eq('producer_id', producerId);
 
-    if (status) query = query.eq('status', status);
-    if (producerId) query = query.eq('producer_id', producerId);
-
-    const { data, error, count } = await query;
-    if (error) throw error;
-
-    res.json({
-      batches: data,
-      total: count,
-      page: Number(page),
-      limit: Number(limit),
-    });
+      const { data, error, count } = await query;
+      if (!error && data) {
+        return res.json({
+          batches: data,
+          total: count,
+          page: Number(page),
+          limit: Number(limit),
+        });
+      }
+    }
   } catch (err) {
-    console.error('[batches] GET /:', err.message);
-    res.status(500).json({ error: err.message });
+    console.warn('[batches] Supabase query notice, serving local data:', err.message);
   }
+
+  // Fallback to mock batches
+  res.json({
+    batches: mockBatches,
+    total: mockBatches.length,
+    page: 1,
+    limit: 20,
+    isMock: true,
+  });
 });
 
 /**
@@ -50,32 +59,35 @@ router.get('/', async (req, res) => {
  */
 router.get('/number/:batchNumber', async (req, res) => {
   try {
-    if (!supabase) return res.status(503).json({ error: 'Database not configured' });
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('batches')
+        .select(`
+          *,
+          producer:profiles!batches_producer_id_fkey(id, full_name, organization_name, wallet_address, phone),
+          farm:farms(id, farm_name, region, state, latitude, longitude, organic_certified, palm_tree_count),
+          batch_trace_logs(id, stage_name, stage_order, location_name, stage_timestamp, notes, metadata)
+        `)
+        .eq('batch_number', req.params.batchNumber)
+        .maybeSingle();
 
-    const { data, error } = await supabase
-      .from('batches')
-      .select(`
-        *,
-        producer:profiles!batches_producer_id_fkey(id, full_name, organization_name, wallet_address, phone),
-        farm:farms(id, farm_name, region, state, latitude, longitude, organic_certified, palm_tree_count),
-        batch_trace_logs(id, stage_name, stage_order, location_name, stage_timestamp, notes, metadata)
-      `)
-      .eq('batch_number', req.params.batchNumber)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (!data) return res.status(404).json({ error: 'Batch not found' });
-
-    // Sort trace logs by stage order
-    if (data.batch_trace_logs) {
-      data.batch_trace_logs.sort((a, b) => a.stage_order - b.stage_order);
+      if (!error && data) {
+        if (data.batch_trace_logs) {
+          data.batch_trace_logs.sort((a, b) => a.stage_order - b.stage_order);
+        }
+        return res.json({ batch: data });
+      }
     }
-
-    res.json({ batch: data });
   } catch (err) {
-    console.error('[batches] GET /number/:batchNumber:', err.message);
-    res.status(500).json({ error: err.message });
+    console.warn('[batches] Supabase notice for /number:', err.message);
   }
+
+  const found = mockBatches.find((b) => b.batch_number === req.params.batchNumber);
+  if (found) {
+    return res.json({ batch: found, isMock: true });
+  }
+
+  res.status(404).json({ error: 'Batch not found' });
 });
 
 /**
@@ -84,31 +96,35 @@ router.get('/number/:batchNumber', async (req, res) => {
  */
 router.get('/:id', async (req, res) => {
   try {
-    if (!supabase) return res.status(503).json({ error: 'Database not configured' });
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('batches')
+        .select(`
+          *,
+          producer:profiles!batches_producer_id_fkey(id, full_name, organization_name, wallet_address, phone),
+          farm:farms(id, farm_name, region, state, latitude, longitude, organic_certified, palm_tree_count),
+          batch_trace_logs(id, stage_name, stage_order, location_name, stage_timestamp, notes, metadata)
+        `)
+        .eq('id', req.params.id)
+        .maybeSingle();
 
-    const { data, error } = await supabase
-      .from('batches')
-      .select(`
-        *,
-        producer:profiles!batches_producer_id_fkey(id, full_name, organization_name, wallet_address, phone),
-        farm:farms(id, farm_name, region, state, latitude, longitude, organic_certified, palm_tree_count),
-        batch_trace_logs(id, stage_name, stage_order, location_name, stage_timestamp, notes, metadata)
-      `)
-      .eq('id', req.params.id)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (!data) return res.status(404).json({ error: 'Batch not found' });
-
-    if (data.batch_trace_logs) {
-      data.batch_trace_logs.sort((a, b) => a.stage_order - b.stage_order);
+      if (!error && data) {
+        if (data.batch_trace_logs) {
+          data.batch_trace_logs.sort((a, b) => a.stage_order - b.stage_order);
+        }
+        return res.json({ batch: data });
+      }
     }
-
-    res.json({ batch: data });
   } catch (err) {
-    console.error('[batches] GET /:id:', err.message);
-    res.status(500).json({ error: err.message });
+    console.warn('[batches] Supabase notice for /:id:', err.message);
   }
+
+  const found = mockBatches.find((b) => b.id === req.params.id || b.batch_number === req.params.id);
+  if (found) {
+    return res.json({ batch: found, isMock: true });
+  }
+
+  res.status(404).json({ error: 'Batch not found' });
 });
 
 /**

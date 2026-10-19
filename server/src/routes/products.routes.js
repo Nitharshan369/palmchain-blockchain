@@ -1,5 +1,6 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
+import { mockProducts } from '../data/mockData.js';
 
 const router = express.Router();
 
@@ -10,34 +11,41 @@ const router = express.Router();
  */
 router.get('/', async (req, res) => {
   try {
-    if (!supabase) return res.status(503).json({ error: 'Database not configured' });
+    if (supabase) {
+      const { producerId, limit = 20, page = 1 } = req.query;
+      const from = (Number(page) - 1) * Number(limit);
+      const to = from + Number(limit) - 1;
 
-    const { producerId, limit = 20, page = 1 } = req.query;
-    const from = (Number(page) - 1) * Number(limit);
-    const to = from + Number(limit) - 1;
+      let query = supabase
+        .from('products')
+        .select(
+          `*,
+           batch:batches(id, batch_number, status, is_certified, harvest_date, form, total_quantity_kg, sha256_hash),
+           producer:profiles!products_producer_id_fkey(id, full_name, organization_name)`,
+          { count: 'exact' }
+        )
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
-    let query = supabase
-      .from('products')
-      .select(
-        `*,
-         batch:batches(id, batch_number, status, is_certified, harvest_date, form, total_quantity_kg, sha256_hash),
-         producer:profiles!products_producer_id_fkey(id, full_name, organization_name)`,
-        { count: 'exact' }
-      )
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-      .range(from, to);
+      if (producerId) query = query.eq('producer_id', producerId);
 
-    if (producerId) query = query.eq('producer_id', producerId);
-
-    const { data, error, count } = await query;
-    if (error) throw error;
-
-    res.json({ products: data, total: count, page: Number(page), limit: Number(limit) });
+      const { data, error, count } = await query;
+      if (!error && data) {
+        return res.json({ products: data, total: count, page: Number(page), limit: Number(limit) });
+      }
+    }
   } catch (err) {
-    console.error('[products] GET /:', err.message);
-    res.status(500).json({ error: err.message });
+    console.warn('[products] Supabase query notice, serving local data:', err.message);
   }
+
+  res.json({
+    products: mockProducts,
+    total: mockProducts.length,
+    page: 1,
+    limit: 20,
+    isMock: true,
+  });
 });
 
 /**
@@ -46,26 +54,31 @@ router.get('/', async (req, res) => {
  */
 router.get('/:id', async (req, res) => {
   try {
-    if (!supabase) return res.status(503).json({ error: 'Database not configured' });
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('products')
+        .select(
+          `*,
+           batch:batches(*, farm:farms(*), batch_trace_logs(*)),
+           producer:profiles!products_producer_id_fkey(id, full_name, organization_name, wallet_address, phone)`
+        )
+        .eq('id', req.params.id)
+        .maybeSingle();
 
-    const { data, error } = await supabase
-      .from('products')
-      .select(
-        `*,
-         batch:batches(*, farm:farms(*), batch_trace_logs(*)),
-         producer:profiles!products_producer_id_fkey(id, full_name, organization_name, wallet_address, phone)`
-      )
-      .eq('id', req.params.id)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (!data) return res.status(404).json({ error: 'Product not found' });
-
-    res.json({ product: data });
+      if (!error && data) {
+        return res.json({ product: data });
+      }
+    }
   } catch (err) {
-    console.error('[products] GET /:id:', err.message);
-    res.status(500).json({ error: err.message });
+    console.warn('[products] Supabase notice for /:id:', err.message);
   }
+
+  const found = mockProducts.find((p) => p.id === req.params.id);
+  if (found) {
+    return res.json({ product: found, isMock: true });
+  }
+
+  res.status(404).json({ error: 'Product not found' });
 });
 
 /**

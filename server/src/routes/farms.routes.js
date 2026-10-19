@@ -1,5 +1,6 @@
 import express from 'express';
 import { supabase } from '../config/supabase.js';
+import { mockFarms } from '../data/mockData.js';
 
 const router = express.Router();
 
@@ -9,20 +10,21 @@ const router = express.Router();
  */
 router.get('/', async (req, res) => {
   try {
-    if (!supabase) return res.status(503).json({ error: 'Database not configured' });
+    if (supabase) {
+      const { producerId } = req.query;
+      let query = supabase.from('farms').select('*').order('created_at', { ascending: false });
+      if (producerId) query = query.eq('producer_id', producerId);
 
-    const { producerId } = req.query;
-    let query = supabase.from('farms').select('*').order('created_at', { ascending: false });
-    if (producerId) query = query.eq('producer_id', producerId);
-
-    const { data, error } = await query;
-    if (error) throw error;
-
-    res.json({ farms: data });
+      const { data, error } = await query;
+      if (!error && data) {
+        return res.json({ farms: data });
+      }
+    }
   } catch (err) {
-    console.error('[farms] GET /:', err.message);
-    res.status(500).json({ error: err.message });
+    console.warn('[farms] Supabase query notice, serving local data:', err.message);
   }
+
+  res.json({ farms: mockFarms, isMock: true });
 });
 
 /**

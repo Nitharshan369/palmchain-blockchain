@@ -17,7 +17,8 @@ import {
   Clock,
   AlertTriangle,
   ExternalLink,
-  RefreshCw
+  RefreshCw,
+  Sprout
 } from 'lucide-react';
 import { ethers } from 'ethers';
 import { mockTrees } from '../../data/mockData';
