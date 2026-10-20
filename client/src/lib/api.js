@@ -48,8 +48,8 @@ export const batchesApi = {
   getById: (id) => api.get(`/batches/${id}`),
   getByBatchNumber: (num) => api.get(`/batches/number/${num}`),
   generateCode: () => api.get('/batches/generate-code'),
-  create: (batch) => api.post('/batches', batch),
-  anchorToChain: (id, txData) => api.post(`/batches/${id}/anchor`, txData),
+  create: (batch, signer) => signedWalletRequest('POST', '/batches', batch, signer, '/'),
+  anchorToChain: (id, txData, signer) => signedWalletRequest('POST', `/batches/${id}/anchor`, txData, signer, `/${id}/anchor`),
 };
 
 // ─── Products ────────────────────────────────────────────────────────────────

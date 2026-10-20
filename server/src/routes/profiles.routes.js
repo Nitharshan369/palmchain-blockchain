@@ -46,15 +46,7 @@ router.get('/wallet/:address', async (req, res) => {
     return res.json({ profile: localProfiles.get(cleanAddress) });
   }
 
-  // Default synthetic profile for verified address
-  res.json({
-    profile: {
-      wallet_address: cleanAddress,
-      full_name: 'PalmChain Producer',
-      role: 'producer',
-      organization_name: 'Heritage Palmyrah Farmer Cooperative',
-    },
-  });
+  return res.status(404).json({ error: 'Profile not found' });
 });
 
 /**

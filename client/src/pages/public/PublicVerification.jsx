@@ -29,7 +29,6 @@ import {
   ServerOff
 } from 'lucide-react';
 import { ethers } from 'ethers';
-import { mockBatches } from '../../data/mockData';
 import ProductionTimeline from '../../components/common/ProductionTimeline';
 import QRPreviewModal from '../../components/common/QRPreviewModal';
 import { 
@@ -130,20 +129,7 @@ export default function PublicVerification() {
         console.warn('[verify] API notice:', err.message);
       }
 
-      // Fallback to mock batch if offline
-      const fallback = mockBatches[currentBatchId] || mockBatches['PJG-2026-001'];
-      if (!isCancelled && fallback) {
-        setBatchRecord(fallback);
-        setTamperSandbox({
-          active: false,
-          neeraLiters: String(fallback.neera_volume_liters || fallback.neera_liters || '850'),
-          jaggeryKg: String(fallback.total_quantity_kg || fallback.jaggery_kg || '120'),
-          productionDate: String(fallback.harvest_date || '2026-03-10'),
-          treesUsed: fallback.sourceTreeIds || ['PLM-TK-012', 'PLM-TK-014'],
-          productionNotes: fallback.production_notes || 'Heritage morning harvest from Tenkasi Grove.',
-        });
-        setLoading(false);
-      } else if (!isCancelled) {
+      if (!isCancelled) {
         setFetchError(`Batch ${currentBatchId} was not found in off-chain database or on-chain registry.`);
         setLoading(false);
       }
@@ -239,15 +225,15 @@ export default function PublicVerification() {
     // Resolve values (tampered sandbox vs authentic baseline)
     const effectiveNeera = tamperSandbox.active 
       ? parseFloat(tamperSandbox.neeraLiters) || 0 
-      : parseFloat(batchRecord.neera_liters ?? batchRecord.sapVolumeLiters ?? batchRecord.neera_volume_liters ?? 850);
+      : parseFloat(batchRecord.neera_liters ?? batchRecord.sapVolumeLiters ?? batchRecord.neera_volume_liters ?? 0);
 
     const effectiveJaggery = tamperSandbox.active 
       ? parseFloat(tamperSandbox.jaggeryKg) || 0 
-      : parseFloat(batchRecord.jaggery_kg ?? batchRecord.outputKg ?? batchRecord.total_quantity_kg ?? 115);
+      : parseFloat(batchRecord.jaggery_kg ?? batchRecord.outputKg ?? batchRecord.total_quantity_kg ?? 0);
 
     const effectiveDate = tamperSandbox.active 
       ? tamperSandbox.productionDate 
-      : (batchRecord.production_date || batchRecord.harvest_date || '2026-10-20');
+      : (batchRecord.production_date || batchRecord.harvest_date || '');
 
     const effectiveTrees = tamperSandbox.active 
       ? tamperSandbox.treesUsed 
@@ -260,8 +246,8 @@ export default function PublicVerification() {
     // Track altered fields in sandbox
     const altered = [];
     if (tamperSandbox.active) {
-      const origNeera = parseFloat(batchRecord.neera_liters ?? batchRecord.sapVolumeLiters ?? batchRecord.neera_volume_liters ?? 850);
-      const origJaggery = parseFloat(batchRecord.jaggery_kg ?? batchRecord.outputKg ?? batchRecord.total_quantity_kg ?? 115);
+      const origNeera = parseFloat(batchRecord.neera_liters ?? batchRecord.sapVolumeLiters ?? batchRecord.neera_volume_liters ?? 0);
+      const origJaggery = parseFloat(batchRecord.jaggery_kg ?? batchRecord.outputKg ?? batchRecord.total_quantity_kg ?? 0);
       const origDate = batchRecord.production_date || batchRecord.harvest_date;
       const origNotes = batchRecord.production_notes || batchRecord.notes || '';
 
@@ -275,7 +261,7 @@ export default function PublicVerification() {
     const payload = buildCanonicalBatchPayload({
       schemaVersion: batchRecord.schema_version || CURRENT_SCHEMA_VERSION,
       batchId: currentBatchId,
-      producerAddress: onchainState.producerAddress || batchRecord.producer_address || batchRecord.producer?.wallet_address || '0x0000000000000000000000000000000000000000',
+      producerAddress: onchainState.producerAddress || batchRecord.producer_address || batchRecord.producer?.wallet_address || '',
       productionDate: effectiveDate,
       treesUsed: effectiveTrees,
       neeraLiters: effectiveNeera,
@@ -313,7 +299,6 @@ export default function PublicVerification() {
   // Check B: Producer On-Chain Verification
   const isProducerVerified = Boolean(
     onchainState.producerVerifiedOnChain ||
-    (onchainState.producerAddress && onchainState.producerAddress.toLowerCase() === '0x74de526b0cdfb86d682cb293d4006076a2fe6088') ||
     batchRecord?.producer?.is_verified
   );
 
@@ -326,9 +311,7 @@ export default function PublicVerification() {
 
   // Check D: Sepolia Transaction Status
   const isTxConfirmed = Boolean(
-    onchainState.anchored ||
-    batchRecord?.onchain_tx_hash ||
-    batchRecord?.onchainTxHash
+    onchainState.anchored
   );
 
   const txHash = batchRecord?.onchain_tx_hash || batchRecord?.onchainTxHash || '';
@@ -813,7 +796,7 @@ export default function PublicVerification() {
               <div className="space-y-1">
                 <span className="text-stone-400">Producer Wallet</span>
                 <p className="font-mono text-[11px] font-bold text-stone-800 truncate">
-                  {onchainState.producerAddress || batchRecord.producer_address || batchRecord.producer?.wallet_address || '0x74de526B0CDFB86D682cB293d4006076a2FE6088'}
+                  {onchainState.producerAddress || batchRecord.producer_address || batchRecord.producer?.wallet_address || 'Unavailable'}
                 </p>
               </div>
 

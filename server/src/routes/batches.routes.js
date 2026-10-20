@@ -1,5 +1,7 @@
 import express from 'express';
+import { ethers } from 'ethers';
 import { supabase } from '../config/supabase.js';
+import { verifyWalletSignature } from '../middleware/verifyWalletSignature.js';
 import {
   CURRENT_SCHEMA_VERSION,
   buildCanonicalBatchPayload,
@@ -11,6 +13,45 @@ import {
 import { getStoredBatches, findStoredBatch, upsertStoredBatch } from '../data/batchesStore.js';
 
 const router = express.Router();
+
+const SEPOLIA_RPC_URL = process.env.SEPOLIA_RPC_URL || 'https://rpc.sepolia.org';
+const BATCH_REGISTRY_ADDRESS =
+  process.env.PALMCHAIN_BATCH_REGISTRY_ADDRESS ||
+  process.env.VITE_BATCH_REGISTRY_ADDRESS ||
+  '0xB77f75af51Ea8680665A3c5749de7b3e3b2C7829';
+const BATCH_REGISTRY_ABI = [
+  'event BatchCreated(string indexed batchId, bytes32 indexed dataHash, address indexed producer, uint256 neeraLiters, uint256 jaggeryKg, uint256 timestamp)',
+];
+
+async function verifyBatchCreationOnChain({ txHash, batchCode, producerAddress, dataHash, neeraLiters, jaggeryKg }) {
+  if (!ethers.isAddress(producerAddress)) throw new Error('A valid producer wallet is required');
+  if (!ethers.isHexString(txHash, 32)) throw new Error('A valid on-chain transaction hash is required');
+
+  const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC_URL);
+  const network = await provider.getNetwork();
+  if (network.chainId !== 11155111n) throw new Error('Batch anchoring is restricted to Ethereum Sepolia');
+
+  const tx = await provider.getTransaction(txHash);
+  const receipt = await provider.getTransactionReceipt(txHash);
+  if (!tx || !receipt || receipt.status !== 1) throw new Error('The batch transaction was not successfully mined');
+  if (tx.to?.toLowerCase() !== BATCH_REGISTRY_ADDRESS.toLowerCase()) throw new Error('Transaction target is not the configured BatchRegistry');
+  if (tx.from.toLowerCase() !== ethers.getAddress(producerAddress).toLowerCase()) throw new Error('Transaction sender does not match the signed producer wallet');
+
+  const iface = new ethers.Interface(BATCH_REGISTRY_ABI);
+  const event = receipt.logs.map((log) => {
+    try { return iface.parseLog(log); } catch { return null; }
+  }).find((parsed) => parsed?.name === 'BatchCreated');
+  if (!event) throw new Error('BatchCreated event was not found in the transaction receipt');
+
+  const args = event.args;
+  if (String(args.batchId).toUpperCase() !== batchCode) throw new Error('On-chain batch identifier does not match the database record');
+  if (String(args.dataHash).toLowerCase() !== to0xHash(dataHash).toLowerCase()) throw new Error('On-chain data hash does not match the canonical database hash');
+  if (ethers.getAddress(args.producer) !== ethers.getAddress(producerAddress)) throw new Error('On-chain producer does not match the signed producer wallet');
+  if (args.neeraLiters !== BigInt(Math.round(Number(neeraLiters) * 100))) throw new Error('On-chain Neera quantity does not match the database record');
+  if (args.jaggeryKg !== BigInt(Math.round(Number(jaggeryKg) * 100))) throw new Error('On-chain jaggery quantity does not match the database record');
+
+  return { blockNumber: receipt.blockNumber, dataHash: String(args.dataHash) };
+}
 
 /**
  * Generate a unique application batch code.
@@ -77,7 +118,11 @@ router.get('/', async (req, res) => {
     }
   }
 
-  // 2. Fetch local persistent batches
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(503).json({ error: 'Batch database is temporarily unavailable' });
+  }
+
+  // 2. Fetch local persistent batches only during local development.
   const localBatches = getStoredBatches();
 
   // 3. Merge without duplicates (Supabase takes precedence, local batches fill in)
@@ -134,7 +179,11 @@ router.get('/number/:batchNumber', async (req, res) => {
     }
   }
 
-  // 2. Try local store
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(503).json({ error: 'Batch database is temporarily unavailable' });
+  }
+
+  // 2. Try local store only during local development.
   const found = findStoredBatch(reqNum);
   if (found) {
     return res.json({ batch: found });
@@ -174,6 +223,10 @@ router.get('/:id', async (req, res) => {
     }
   }
 
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(503).json({ error: 'Batch database is temporarily unavailable' });
+  }
+
   const found = findStoredBatch(query);
   if (found) {
     return res.json({ batch: found });
@@ -194,6 +247,7 @@ router.get('/:id', async (req, res) => {
  */
 router.post('/', async (req, res) => {
   try {
+    const signedWallet = await verifyWalletSignature(req);
     const {
       batch_number,
       batchId,
@@ -225,6 +279,14 @@ router.post('/', async (req, res) => {
       onchain_data_hash,
     } = req.body;
 
+    const requestedProducer = producer_address || producerAddress || '';
+    if (!ethers.isAddress(requestedProducer) || ethers.getAddress(requestedProducer) !== signedWallet) {
+      return res.status(403).json({ error: 'The signed wallet must match producer_address' });
+    }
+    if (!onchain_tx_hash) {
+      return res.status(400).json({ error: 'A successfully mined on-chain batch transaction is required' });
+    }
+
     // 1. Resolve and Validate Core Parameters
     const batchCode = String(batch_number || batchId || generateUniqueBatchCode()).trim().toUpperCase();
     const prodDate = String(production_date || productionDate || harvest_date || harvestDate || '').trim();
@@ -247,7 +309,7 @@ router.post('/', async (req, res) => {
     const canonicalPayload = buildCanonicalBatchPayload({
       schemaVersion: CURRENT_SCHEMA_VERSION,
       batchId: batchCode,
-      producerAddress: producer_address || producerAddress || '',
+      producerAddress: signedWallet,
       productionDate: prodDate,
       treesUsed: trees,
       neeraLiters: neera,
@@ -260,8 +322,17 @@ router.post('/', async (req, res) => {
     const canonicalJson = canonicalJsonStringify(canonicalPayload);
     const sha256_hash = generateSHA256Hash(canonicalJson);
 
-    // 3. Assemble Full Batch Document
-    const isAnchored = Boolean(onchain_tx_hash);
+    const chainAnchor = await verifyBatchCreationOnChain({
+      txHash: onchain_tx_hash,
+      batchCode,
+      producerAddress: signedWallet,
+      dataHash: to0xHash(sha256_hash),
+      neeraLiters: neera,
+      jaggeryKg: jaggery,
+    });
+
+    // 3. Assemble the full record only after the Sepolia event is verified.
+    const isAnchored = true;
     const batchRecord = {
       id: `batch-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       batch_number: batchCode,
@@ -298,14 +369,14 @@ router.post('/', async (req, res) => {
       sha256Hash: sha256_hash,
       onchain_tx_hash: onchain_tx_hash || null,
       onchainTxHash: onchain_tx_hash || null,
-      onchain_block_number: onchain_block_number || null,
-      onchainBlockNumber: onchain_block_number || null,
-      onchain_data_hash: onchain_data_hash || to0xHash(sha256_hash),
+      onchain_block_number: chainAnchor.blockNumber,
+      onchainBlockNumber: chainAnchor.blockNumber,
+      onchain_data_hash: chainAnchor.dataHash,
       is_onchain_anchored: isAnchored,
       is_anchored: isAnchored,
       status: isAnchored ? 'anchored' : 'draft',
       producer_address: canonicalPayload.producerAddress,
-      producerAddress: canonicalPayload.producerAddress,
+      producerAddress: signedWallet,
       producer: {
         wallet_address: canonicalPayload.producerAddress,
         full_name: 'PalmChain Verified Producer',
@@ -316,10 +387,7 @@ router.post('/', async (req, res) => {
       updated_at: new Date().toISOString(),
     };
 
-    // 4. Always persist locally first so data is NEVER lost
-    const savedLocal = upsertStoredBatch(batchRecord);
-
-    // 5. Attempt Supabase persistence
+    // 4. Persist to Supabase only after the chain proof is verified.
     let savedInSupabase = false;
     let supabaseError = null;
 
@@ -328,11 +396,14 @@ router.post('/', async (req, res) => {
         const { data: producerProfile, error: profileError } = await supabase
           .from('profiles')
           .select('id, wallet_address, role, is_active')
-          .ilike('wallet_address', canonicalPayload.producerAddress)
+          .ilike('wallet_address', signedWallet)
           .maybeSingle();
         if (profileError) throw profileError;
         if (!producerProfile || producerProfile.role !== 'producer' || !producerProfile.is_active) {
           throw new Error('An active producer profile must be synced before saving this batch');
+        }
+        if (ethers.getAddress(producerProfile.wallet_address) !== signedWallet) {
+          return res.status(403).json({ error: 'Batch producer does not match the connected wallet profile' });
         }
         if (producer_id && producer_id !== producerProfile.id) {
           return res.status(403).json({ error: 'Batch producer does not match the connected wallet profile' });
@@ -360,7 +431,7 @@ router.post('/', async (req, res) => {
             canonical_metadata: canonicalPayload,
             sha256_hash,
             onchain_tx_hash: onchain_tx_hash || null,
-            onchain_block_number: onchain_block_number || null,
+            onchain_block_number: chainAnchor.blockNumber,
             is_onchain_anchored: isAnchored,
             status: isAnchored ? 'anchored' : 'draft',
             qr_code_payload: `${process.env.CLIENT_URL || 'http://localhost:5173'}/verify/${batchCode}`,
@@ -396,6 +467,11 @@ router.post('/', async (req, res) => {
       }
     }
 
+    if (!savedInSupabase) {
+      return res.status(503).json({ error: supabaseError || 'Batch could not be persisted after on-chain confirmation' });
+    }
+
+    upsertStoredBatch(batchRecord);
     res.status(201).json({
       success: true,
       batch: batchRecord,
@@ -409,7 +485,7 @@ router.post('/', async (req, res) => {
     });
   } catch (err) {
     console.error('[batches] POST / error:', err);
-    res.status(500).json({ error: err.message || 'Internal error creating batch' });
+    res.status(err.status || 500).json({ error: err.message || 'Internal error creating batch' });
   }
 });
 
@@ -421,15 +497,39 @@ router.post('/:id/anchor', async (req, res) => {
   const query = req.params.id;
   const { onchain_tx_hash, onchain_block_number, onchain_data_hash } = req.body;
 
+  let signedWallet;
+  try {
+    signedWallet = await verifyWalletSignature(req);
+  } catch (error) {
+    return res.status(error.status || 401).json({ error: error.message });
+  }
+
   if (!onchain_tx_hash) {
     return res.status(400).json({ error: 'onchain_tx_hash is required to confirm anchoring' });
   }
 
-  // 1. Update in local store
   const existing = findStoredBatch(query);
+  if (!existing) return res.status(404).json({ error: 'Batch not found' });
+  try {
+    const chainAnchor = await verifyBatchCreationOnChain({
+      txHash: onchain_tx_hash,
+      batchCode: String(existing.batch_number || query).toUpperCase(),
+      producerAddress: signedWallet,
+      dataHash: onchain_data_hash || existing.sha256_hash,
+      neeraLiters: existing.neera_liters,
+      jaggeryKg: existing.jaggery_kg,
+    });
+    if (onchain_block_number && Number(onchain_block_number) !== chainAnchor.blockNumber) {
+      return res.status(400).json({ error: 'Submitted block number does not match the verified receipt' });
+    }
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  // Update storage only after the chain proof succeeds.
   const updatedData = {
-    ...(existing || {}),
-    batch_number: (existing?.batch_number || query).toUpperCase(),
+    ...existing,
+    batch_number: (existing.batch_number || query).toUpperCase(),
     onchain_tx_hash,
     onchainTxHash: onchain_tx_hash,
     onchain_block_number: onchain_block_number || null,

@@ -53,5 +53,12 @@ REVOKE INSERT, UPDATE, DELETE ON public.profiles, public.farms, public.batches,
   public.batch_trace_logs, public.products, public.orders, public.order_items
   FROM anon, authenticated;
 
+-- Orders contain customer identity and delivery information. They must never be
+-- publicly readable through the browser's Supabase roles; the signed server API
+-- returns only the records a wallet is allowed to see.
+DROP POLICY IF EXISTS "Customer can read their orders" ON public.orders;
+DROP POLICY IF EXISTS "Customer can read their order items" ON public.order_items;
+REVOKE SELECT ON public.orders, public.order_items FROM anon, authenticated;
+
 COMMENT ON COLUMN public.batches.production_cost_inr IS
   'Optional producer-entered cost basis in INR; never derived from Sepolia ETH.';

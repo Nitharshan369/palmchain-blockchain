@@ -1,7 +1,6 @@
 import express from 'express';
 import { ethers } from 'ethers';
 import { supabase } from '../config/supabase.js';
-import { mockFarms } from '../data/mockData.js';
 import { verifyWalletSignature } from '../middleware/verifyWalletSignature.js';
 
 const router = express.Router();
@@ -23,10 +22,10 @@ router.get('/', async (req, res) => {
       }
     }
   } catch (err) {
-    console.warn('[farms] Supabase query notice, serving local data:', err.message);
+    console.warn('[farms] Supabase query notice:', err.message);
   }
 
-  res.json({ farms: mockFarms, isMock: true });
+  return res.status(503).json({ error: 'Farm data is temporarily unavailable' });
 });
 
 /**

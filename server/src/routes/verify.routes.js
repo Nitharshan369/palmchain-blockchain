@@ -14,7 +14,9 @@ import { findStoredBatch } from '../data/batchesStore.js';
 const router = express.Router();
 
 // Fallback Sepolia RPC and deployed BatchRegistry contract address
-const SEPOLIA_RPC_URL = process.env.SEPOLIA_RPC_URL || 'https://eth-sepolia.g.alchemy.com/v2/alch_v5uaUe7qMsm8BLhpm2XGE';
+// Use an explicitly configured RPC in deployment. The public fallback is rate-limited
+// and deliberately contains no provider credential.
+const SEPOLIA_RPC_URL = process.env.SEPOLIA_RPC_URL || 'https://rpc.sepolia.org';
 const BATCH_REGISTRY_ADDRESS =
   process.env.PALMCHAIN_BATCH_REGISTRY_ADDRESS ||
   process.env.VITE_BATCH_REGISTRY_ADDRESS ||
@@ -77,14 +79,15 @@ router.get('/:batchNumber', async (req, res) => {
       }
     }
 
-    // 2. Fallback to local store
-    if (!batch) {
+    // Local JSON storage is a development-only aid and must never be a
+    // production source of public verification records.
+    if (!batch && process.env.NODE_ENV !== 'production') {
       batch = findStoredBatch(batchCode);
     }
 
     if (!batch) {
       return res.status(404).json({
-        error: `Batch ${batchCode} not found in database or local store`,
+        error: `Batch ${batchCode} was not found in the verification database`,
         batch_number: batchCode,
         verified: false,
       });

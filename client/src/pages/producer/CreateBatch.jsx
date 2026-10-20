@@ -337,7 +337,7 @@ export default function CreateBatch() {
           onchain_data_hash: dataHashBytes32,
         };
 
-        const saveResult = await batchesApi.create(payloadToSave);
+        const saveResult = await batchesApi.create(payloadToSave, await getSigner());
         if (!saveResult?.storage?.supabase) {
           throw new Error(saveResult?.storage?.supabaseNotice || 'Batch data was saved locally but not persisted to Supabase.');
         }
@@ -387,7 +387,7 @@ export default function CreateBatch() {
         onchain_data_hash: computedHash.startsWith('0x') ? computedHash : `0x${computedHash}`,
       };
 
-      const dbRes = await batchesApi.create(payloadToSave);
+      const dbRes = await batchesApi.create(payloadToSave, await getSigner());
       if (!dbRes?.storage?.supabase) {
         throw new Error(dbRes?.storage?.supabaseNotice || 'Batch data was saved locally but not persisted to Supabase.');
       }
