@@ -127,13 +127,18 @@ cp contracts/.env.example contracts/.env
 2. Run `database/migrations/001_initial_schema.sql`.
 3. Run `database/migrations/002_rls_policies.sql`.
 4. Run `database/migrations/004_marketplace.sql`.
-5. (Optional) Run `database/seed/001_seed_dev_data.sql` to populate sample records.
+5. Run `database/migrations/005_payment_escrow.sql` to add testnet payment/escrow settlement.
+6. (Optional) Run `database/seed/001_seed_dev_data.sql` to populate sample records.
 
 The marketplace API publishes only fresh-signature-authorized producer listings backed by a
 hash-matched Sepolia batch in `Packaged` or `Listed` status. Producer profile and farm writes
 are routed through the signed API, and direct anonymous writes are disabled by RLS. Supabase
 tracks product inventory and unpaid order reservations transactionally. Marketplace browsing
-and orders do not submit blockchain transactions or collect payment.
+reads listings matched to the dedicated payment escrow contract on Ethereum Sepolia. Buyers and
+producers submit listing, purchase, fulfillment, release, dispute, and refund transactions
+through MetaMask using Sepolia test ETH only. Inventory updates occur only after the server
+verifies a confirmed escrow receipt and matching on-chain event. The escrow contract records
+seller fulfillment attestations; it does not independently prove physical delivery.
 
 ### 4. Compile & Test Smart Contracts
 

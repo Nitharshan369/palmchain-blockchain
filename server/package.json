@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "node --test src/services/marketplace.test.js"
+    "test": "node --test src/services/marketplace.test.js src/services/escrow.test.js"
   },
   "keywords": [
     "blockchain",

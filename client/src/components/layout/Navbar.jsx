@@ -4,6 +4,7 @@ import {
   ShieldCheck, 
   QrCode, 
   ShoppingBag, 
+  ClipboardList,
   Menu, 
   X, 
   ChevronDown, 
@@ -84,6 +85,18 @@ export default function Navbar() {
             >
               <QrCode className="w-3.5 h-3.5 text-forest-700" />
               <span>Verify Batch</span>
+            </Link>
+
+            <Link
+              to="/orders"
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center space-x-1.5 ${
+                isActive('/orders')
+                  ? 'bg-cream-200 text-forest-900 shadow-xs'
+                  : 'text-stone-700 hover:text-forest-900 hover:bg-cream-100'
+              }`}
+            >
+              <ClipboardList className="w-3.5 h-3.5 text-forest-700" />
+              <span>Escrow Orders</span>
             </Link>
 
             {/* Role Dashboards Dropdown */}
@@ -196,6 +209,13 @@ export default function Navbar() {
             className="block px-3 py-2.5 rounded-xl text-sm font-semibold text-stone-800 hover:bg-cream-100"
           >
             Verify Batch QR
+          </Link>
+          <Link
+            to="/orders"
+            onClick={() => setMobileMenuOpen(false)}
+            className="block px-3 py-2.5 rounded-xl text-sm font-semibold text-stone-800 hover:bg-cream-100"
+          >
+            Escrow Orders
           </Link>
 
           <div className="pt-2 border-t border-cream-200">

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "test": "node --test src/lib/marketplace.test.js",
+    "test": "node --test src/lib/marketplace.test.js src/lib/escrow.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

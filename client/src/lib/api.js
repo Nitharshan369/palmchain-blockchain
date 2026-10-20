@@ -81,12 +81,15 @@ export const productsApi = {
     return api.get(`/products${qs ? '?' + qs : ''}`);
   },
   getById: (id) => api.get(`/products/${id}`),
+  escrowOrders: (wallet) => api.get(`/products/escrow-orders/${wallet}`),
   manage: (signer) => producerRequest('GET', '/manage', undefined, signer),
   create: (product, signer) => producerRequest('POST', '/manage', product, signer),
   update: (id, product, signer) => producerRequest('PATCH', `/manage/${id}`, product, signer),
-  purchase: (id, quantity_kg, request_key = crypto.randomUUID()) => api.post(`/products/${id}/purchase`, {
-    quantity_kg,
-    request_key,
+  syncEscrowListing: (id, transaction_hash) => api.post(`/products/${id}/escrow-listing-sync`, {
+    transaction_hash,
+  }),
+  syncEscrowPurchase: (id, transaction_hash) => api.post(`/products/${id}/escrow-settlement`, {
+    transaction_hash,
   }),
 };
 

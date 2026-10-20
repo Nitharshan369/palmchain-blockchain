@@ -17,6 +17,7 @@
     "test:marketplace": "npm run test --prefix server && npm run test --prefix client",
     "check:contracts:sepolia": "npm run check:sepolia --prefix contracts",
     "deploy:contracts:sepolia": "npm run deploy:sepolia --prefix contracts",
+    "deploy:escrow:sepolia": "npm run deploy:escrow:sepolia --prefix contracts",
     "verify:contracts:sepolia": "npm run verify:sepolia --prefix contracts",
     "start:server": "npm start --prefix server"
   },

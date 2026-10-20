@@ -8,8 +8,15 @@ import {
   isVerifiedProducerStatus,
   hasAvailableInventory,
   validateListingInput,
-  validatePurchaseInput,
 } from '../services/marketplace.js';
+import {
+  ESCROW_CONFIRMATIONS,
+  PAYMENT_ESCROW_ABI,
+  SEPOLIA_CHAIN_ID,
+  getEscrowProductId,
+  parseConfirmedListing,
+  parseConfirmedPurchase,
+} from '../services/escrow.js';
 
 const router = express.Router();
 const SEPOLIA_RPC_URL = process.env.SEPOLIA_RPC_URL || 'https://rpc.sepolia.org';
@@ -21,6 +28,9 @@ const BATCH_REGISTRY_ADDRESS =
   process.env.PALMCHAIN_BATCH_REGISTRY_ADDRESS
   || process.env.VITE_BATCH_REGISTRY_ADDRESS
   || '0xB77f75af51Ea8680665A3c5749de7b3e3b2C7829';
+const PAYMENT_ESCROW_ADDRESS = process.env.PALMCHAIN_PAYMENT_ESCROW_ADDRESS
+  || process.env.VITE_PAYMENT_ESCROW_ADDRESS
+  || '';
 
 const PRODUCER_REGISTRY_ABI = [
   'function getProducer(address producer) view returns (tuple(address wallet, string name, uint8 status, uint256 registeredAt, uint256 verifiedAt))',
@@ -58,6 +68,21 @@ function getProducerContract() {
     PRODUCER_REGISTRY_ABI,
     new ethers.JsonRpcProvider(SEPOLIA_RPC_URL)
   );
+}
+
+async function getPaymentEscrow() {
+  if (!ethers.isAddress(PAYMENT_ESCROW_ADDRESS) || PAYMENT_ESCROW_ADDRESS === ethers.ZeroAddress) {
+    throw new Error('Payment escrow contract address is not configured on the server');
+  }
+  const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC_URL);
+  const network = await provider.getNetwork();
+  if (network.chainId !== SEPOLIA_CHAIN_ID) {
+    throw new Error('Payment escrow RPC must connect to Sepolia');
+  }
+  return {
+    provider,
+    contract: new ethers.Contract(PAYMENT_ESCROW_ADDRESS, PAYMENT_ESCROW_ABI, provider),
+  };
 }
 
 async function readChainBatch(batchNumber) {
@@ -172,17 +197,27 @@ async function listPublicProducts() {
     `)
     .eq('is_active', true)
     .eq('listing_status', 'active')
+    .eq('escrow_listing_active', true)
     .gt('available_quantity_kg', 0)
     .order('created_at', { ascending: false });
   if (error) throw error;
 
   const products = [];
   const producerStatusCache = new Map();
+  if (!data?.length) return products;
+  const { contract: escrow } = await getPaymentEscrow();
   for (const product of data || []) {
     if (!product.batch?.batch_number || !product.batch.sha256_hash
         || product.batch.producer_id !== product.producer_id) continue;
     const chainBatch = await readChainBatch(product.batch.batch_number);
     if (!isEligibleOnChainBatch(product.batch, chainBatch, product.producer?.wallet_address)) continue;
+    const escrowListing = await escrow.getListing(getEscrowProductId(product.id));
+    if (ethers.getAddress(escrowListing.seller) !== ethers.getAddress(product.producer?.wallet_address || ethers.ZeroAddress)
+        || !escrowListing.active
+        || BigInt(escrowListing.pricePerKgWei) !== BigInt(product.payment_price_per_kg_wei || 0)) continue;
+    const chainQuantityKg = Number(escrowListing.availableQuantityHundredths) / 100;
+    if (chainQuantityKg <= 0) continue;
+    product.available_quantity_kg = Math.min(Number(product.available_quantity_kg), chainQuantityKg);
     let producerVerified = producerStatusCache.get(product.producer?.wallet_address);
     if (producerVerified === undefined) {
       const { status } = await getProducerContract().getProducer(product.producer.wallet_address);
@@ -266,6 +301,50 @@ router.get('/manage', requireProducerSignature, async (req, res) => {
   }
 });
 
+router.get('/escrow-orders/:wallet', async (req, res) => {
+  if (!requireDatabase(res)) return;
+  if (!ethers.isAddress(req.params.wallet)) return res.status(400).json({ error: 'A valid wallet address is required' });
+  try {
+    const { contract: escrow } = await getPaymentEscrow();
+    const orderIds = await escrow.getOrdersForAccount(ethers.getAddress(req.params.wallet));
+    const { data: products, error: productError } = await supabase
+      .from('products')
+      .select(`
+        id, title, price_inr, payment_price_per_kg_wei,
+        producer:profiles!products_producer_id_fkey(full_name, organization_name),
+        batch:batches(batch_number)
+      `);
+    if (productError) throw productError;
+    const productsById = new Map((products || []).map((product) => [
+      getEscrowProductId(product.id).toLowerCase(),
+      product,
+    ]));
+
+    const recentOrderIds = [...orderIds].slice(-100).reverse();
+    const orders = await Promise.all(recentOrderIds.map(async (id) => {
+      const order = await escrow.getOrder(id);
+      return {
+        id: id.toString(),
+        product_id: order.productId,
+        buyer: order.buyer,
+        seller: order.seller,
+        quantity_hundredths: order.quantityHundredths.toString(),
+        price_per_kg_wei: order.pricePerKgWei.toString(),
+        total_wei: order.totalWei.toString(),
+        purchased_at: order.purchasedAt.toString(),
+        fulfilled_at: order.fulfilledAt.toString(),
+        review_deadline: order.reviewDeadline.toString(),
+        status: Number(order.status),
+        product: productsById.get(order.productId.toLowerCase()) || null,
+      };
+    }));
+    return res.json({ orders });
+  } catch (error) {
+    console.error('[products] Escrow order history failed:', error.message);
+    return res.status(503).json({ error: 'Escrow orders could not be loaded from Sepolia' });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   if (!requireDatabase(res)) return;
   try {
@@ -301,7 +380,19 @@ router.post('/manage', requireProducerSignature, async (req, res) => {
       p_image_urls: validation.value.images,
     });
     if (error) return rpcError(res, error);
-    return res.status(201).json({ product: data });
+    const product = Array.isArray(data) ? data[0] : data;
+    const { data: storedProduct, error: escrowPriceError } = await supabase
+      .from('products')
+      .update({
+        payment_price_per_kg_wei: validation.value.paymentPriceWei,
+        escrow_listing_active: false,
+        escrow_synced_quantity_kg: 0,
+      })
+      .eq('id', product.id)
+      .select()
+      .single();
+    if (escrowPriceError) throw escrowPriceError;
+    return res.status(201).json({ product: storedProduct });
   } catch (error) {
     if (error.status) return res.status(error.status).json({ error: error.message });
     console.error('[products] Listing create failed:', error.message);
@@ -330,6 +421,51 @@ router.patch('/manage/:id', requireProducerSignature, async (req, res) => {
       return res.status(404).json({ error: 'Listing not found for this producer' });
     }
 
+    const { provider, contract: escrow } = await getPaymentEscrow();
+    const productIdHash = getEscrowProductId(product.id);
+    const chainListing = await escrow.getListing(productIdHash);
+    if (chainListing.seller !== ethers.ZeroAddress) {
+      const orderIds = await escrow.getOrdersForAccount(req.marketplaceWallet);
+      for (const orderId of orderIds) {
+        const order = await escrow.getOrder(orderId);
+        if (order.productId.toLowerCase() === productIdHash.toLowerCase()
+            && [1, 2, 3].includes(Number(order.status))) {
+          return res.status(409).json({ error: 'Resolve all escrowed, fulfilled, or disputed orders before changing this listing' });
+        }
+      }
+    }
+
+    if (chainListing.active) {
+      const deactivationHash = req.body.escrow_deactivation_transaction_hash;
+      if (typeof deactivationHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(deactivationHash)) {
+        return res.status(409).json({ error: 'Pause the Sepolia escrow listing before changing its details' });
+      }
+      const [transaction, receipt] = await Promise.all([
+        provider.getTransaction(deactivationHash),
+        provider.getTransactionReceipt(deactivationHash),
+      ]);
+      if (!transaction || !receipt || receipt.status !== 1
+          || await provider.getBlockNumber() - receipt.blockNumber + 1 < ESCROW_CONFIRMATIONS) {
+        return res.status(409).json({ error: 'The listing pause transaction must be confirmed on Sepolia first' });
+      }
+      parseConfirmedListing({
+        receipt,
+        transaction,
+        escrow,
+        productId: product.id,
+        seller: req.marketplaceWallet,
+        pricePerKgWei: chainListing.pricePerKgWei,
+        quantityHundredths: chainListing.availableQuantityHundredths,
+        active: false,
+      });
+    }
+
+    const { error: disableEscrowError } = await supabase
+      .from('products')
+      .update({ escrow_listing_active: false })
+      .eq('id', product.id);
+    if (disableEscrowError) throw disableEscrowError;
+
     if (isActive) {
       await requireVerifiedProducer(req.marketplaceWallet);
       await loadProducerBatch(product.batch_id, req.marketplaceProducer);
@@ -345,7 +481,17 @@ router.patch('/manage/:id', requireProducerSignature, async (req, res) => {
       p_is_active: isActive,
     });
     if (error) return rpcError(res, error);
-    return res.json({ product: data });
+    const { data: storedProduct, error: escrowPriceError } = await supabase
+      .from('products')
+      .update({
+        payment_price_per_kg_wei: validation.value.paymentPriceWei,
+        escrow_listing_active: false,
+      })
+      .eq('id', product.id)
+      .select()
+      .single();
+    if (escrowPriceError) throw escrowPriceError;
+    return res.json({ product: storedProduct });
   } catch (error) {
     if (error.status) return res.status(error.status).json({ error: error.message });
     console.error('[products] Listing update failed:', error.message);
@@ -353,76 +499,145 @@ router.patch('/manage/:id', requireProducerSignature, async (req, res) => {
   }
 });
 
-router.post('/:id/purchase', async (req, res) => {
+router.post('/:id/escrow-listing-sync', async (req, res) => {
   if (!requireDatabase(res)) return;
-  const validation = validatePurchaseInput(req.body || {});
-  if (!validation.valid) {
-    return res.status(400).json({ error: 'A positive kg quantity and valid request key are required' });
+  const transactionHash = req.body?.transaction_hash;
+  if (typeof transactionHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(transactionHash)) {
+    return res.status(400).json({ error: 'A valid Sepolia transaction hash is required' });
+  }
+  try {
+    const { data: product, error: productError } = await supabase
+      .from('products')
+      .select('id, producer_id, available_quantity_kg, payment_price_per_kg_wei, is_active, listing_status, producer:profiles!products_producer_id_fkey(wallet_address)')
+      .eq('id', req.params.id)
+      .maybeSingle();
+    if (productError) throw productError;
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    if (!product.producer?.wallet_address) return res.status(409).json({ error: 'Product seller is unavailable' });
+
+    if (!product.payment_price_per_kg_wei) {
+      return res.status(409).json({ error: 'The product has no configured Sepolia ETH/kg price' });
+    }
+
+    const { provider, contract: escrow } = await getPaymentEscrow();
+    const [transaction, receipt] = await Promise.all([
+      provider.getTransaction(transactionHash),
+      provider.getTransactionReceipt(transactionHash),
+    ]);
+    if (!transaction || !receipt) {
+      return res.status(409).json({ error: 'Escrow listing transaction is not yet available on Sepolia' });
+    }
+    if (receipt.status !== 1) {
+      return res.status(409).json({ error: 'Escrow listing transaction reverted on Sepolia' });
+    }
+    if (await provider.getBlockNumber() - receipt.blockNumber + 1 < ESCROW_CONFIRMATIONS) {
+      return res.status(409).json({ error: 'Escrow listing needs two Sepolia confirmations' });
+    }
+
+    const quantityHundredths = BigInt(Math.round(Number(product.available_quantity_kg) * 100));
+    const active = Boolean(product.is_active && product.listing_status === 'active');
+    parseConfirmedListing({
+      receipt,
+      transaction,
+      escrow,
+      productId: product.id,
+      seller: product.producer.wallet_address,
+      pricePerKgWei: product.payment_price_per_kg_wei,
+      quantityHundredths,
+      active,
+    });
+
+    const { data: syncedProduct, error: syncError } = await supabase
+      .from('products')
+      .update({
+        escrow_listing_active: active,
+        escrow_synced_quantity_kg: Number(quantityHundredths) / 100,
+      })
+      .eq('id', product.id)
+      .select('id, escrow_listing_active, escrow_synced_quantity_kg')
+      .single();
+    if (syncError) throw syncError;
+    return res.json({ product: syncedProduct });
+  } catch (error) {
+    console.error('[products] Escrow listing sync failed:', error.message);
+    return res.status(error.status || 503).json({ error: error.message || 'Escrow listing could not be verified' });
+  }
+});
+
+router.post('/:id/escrow-settlement', async (req, res) => {
+  if (!requireDatabase(res)) return;
+  const transactionHash = req.body?.transaction_hash;
+  if (typeof transactionHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(transactionHash)) {
+    return res.status(400).json({ error: 'A valid Sepolia transaction hash is required' });
   }
 
   try {
-    const { data: existingOrder, error: orderError } = await supabase
-      .from('orders')
-      .select('id, total_amount_inr')
-      .eq('request_key', validation.requestKey)
+    const { data: product, error: productError } = await supabase
+      .from('products')
+      .select('id, producer_id, batch_id, price_inr, payment_price_per_kg_wei, available_quantity_kg, escrow_listing_active, is_active, listing_status, producer:profiles!products_producer_id_fkey(wallet_address)')
+      .eq('id', req.params.id)
       .maybeSingle();
-    if (orderError) throw orderError;
-    if (existingOrder) {
-      const { data: items, error: itemError } = await supabase
-        .from('order_items')
-        .select('product_id, quantity')
-        .eq('order_id', existingOrder.id);
-      if (itemError) throw itemError;
-      if (items?.length !== 1 || items[0].product_id !== req.params.id
-          || Number(items[0].quantity) !== validation.quantity) {
-        return res.status(409).json({ error: 'Request key was already used for a different order' });
-      }
-      const { data: product, error: productError } = await supabase
-        .from('products')
-        .select('available_quantity_kg')
-        .eq('id', req.params.id)
-        .maybeSingle();
-      if (productError) throw productError;
-      if (!product) return res.status(404).json({ error: 'Product not found' });
-      return res.status(200).json({
-        order: {
-          id: existingOrder.id,
-          total_amount_inr: existingOrder.total_amount_inr,
-          remaining_quantity_kg: product.available_quantity_kg,
-          payment_status: 'pending',
-          message: 'Order reserved. No payment has been collected.',
-        },
-      });
+    if (productError) throw productError;
+    if (!product?.producer?.wallet_address) return res.status(404).json({ error: 'Product seller was not found' });
+    const { provider, contract: escrow } = await getPaymentEscrow();
+    const receipt = await provider.getTransactionReceipt(transactionHash);
+    if (!receipt) return res.status(202).json({ status: 'pending', message: 'Waiting for the purchase transaction to be mined.' });
+    if (receipt.status !== 1) return res.status(409).json({ status: 'failed', error: 'Purchase transaction reverted on Sepolia' });
+    if (await provider.getBlockNumber() - receipt.blockNumber + 1 < ESCROW_CONFIRMATIONS) {
+      return res.status(202).json({ status: 'pending', message: 'Waiting for additional Sepolia confirmations.' });
     }
 
-    const products = await listPublicProducts();
-    const product = products.find((item) => item.id === req.params.id);
-    if (!product) return res.status(404).json({ error: 'Product not found or no longer available' });
-    if (validation.quantity > Number(product.available_quantity_kg)) {
-      return res.status(409).json({ error: 'Requested quantity exceeds available stock' });
-    }
-
-    const { data, error } = await supabase.rpc('purchase_marketplace_product', {
-      p_product_id: product.id,
-      p_quantity_kg: validation.quantity,
-      p_request_key: validation.requestKey,
+    const transaction = await provider.getTransaction(transactionHash);
+    const purchase = parseConfirmedPurchase({
+      receipt,
+      transaction,
+      escrow,
+      productId: product.id,
+      seller: product.producer.wallet_address,
     });
-    if (error) return rpcError(res, error, 'Order reservation failed');
-    const order = Array.isArray(data) ? data[0] : data;
-    if (!order) throw new Error('Database did not return the reserved order');
-    return res.status(201).json({
+    const onChainOrder = await escrow.getOrder(purchase.orderId);
+    if (onChainOrder.productId.toLowerCase() !== purchase.productId.toLowerCase()
+        || ethers.getAddress(onChainOrder.buyer) !== purchase.buyer
+        || ethers.getAddress(onChainOrder.seller) !== purchase.seller
+        || onChainOrder.quantityHundredths.toString() !== purchase.quantityHundredths
+        || onChainOrder.totalWei.toString() !== purchase.totalWei
+        || Number(onChainOrder.status) === 0) {
+      return res.status(409).json({ error: 'Escrow order does not match its confirmed purchase receipt' });
+    }
+
+    const { data: order, error: settlementError } = await supabase.rpc('settle_marketplace_escrow_purchase', {
+      p_product_id: product.id,
+      p_quantity_kg: purchase.quantityKg,
+      p_escrow_order_id: purchase.orderId,
+      p_payment_tx_hash: transactionHash.toLowerCase(),
+      p_buyer_wallet_address: purchase.buyer,
+      p_seller_wallet_address: purchase.seller,
+      p_payment_amount_wei: purchase.totalWei,
+      p_payment_price_per_kg_wei: purchase.pricePerKgWei,
+    });
+    if (settlementError) return rpcError(res, settlementError, 'Confirmed purchase inventory sync failed');
+    const { data: inventory, error: inventoryError } = await supabase
+      .from('products')
+      .select('available_quantity_kg')
+      .eq('id', product.id)
+      .single();
+    if (inventoryError) throw inventoryError;
+    return res.json({
+      status: 'confirmed',
       order: {
-        id: order.order_id,
-        total_amount_inr: order.total_amount_inr,
-        remaining_quantity_kg: order.remaining_quantity_kg,
-        payment_status: 'pending',
-        message: 'Order reserved. No payment has been collected.',
+        id: order.id,
+        escrow_order_id: purchase.orderId,
+        quantity_kg: purchase.quantityKg,
+        payment_amount_wei: purchase.totalWei,
+        payment_asset: 'Sepolia ETH',
+        payment_tx_hash: transactionHash,
       },
+      remaining_quantity_kg: Number(inventory.available_quantity_kg),
     });
   } catch (error) {
     if (error.status) return res.status(error.status).json({ error: error.message });
-    console.error('[products] Purchase reservation failed:', error.message);
-    return res.status(503).json({ error: 'Purchase reservation could not be completed' });
+    console.error('[products] Confirmed escrow settlement failed:', error.message);
+    return res.status(503).json({ error: 'Confirmed escrow purchase could not be synced to marketplace inventory' });
   }
 });
 

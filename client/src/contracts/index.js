@@ -38,7 +38,32 @@ export const CONTRACT_ADDRESSES = {
     import.meta.env.VITE_BATCH_REGISTRY_ADDRESS ||
     import.meta.env.VITE_PALMCHAIN_BATCH_REGISTRY_ADDRESS ||
     '',
+  paymentEscrow: import.meta.env.VITE_PAYMENT_ESCROW_ADDRESS || '',
 };
+
+export const PaymentEscrowABI = [
+  'function arbiter() view returns (address)',
+  'function FULFILLMENT_TIMEOUT() view returns (uint256)',
+  'function BUYER_REVIEW_PERIOD() view returns (uint256)',
+  'function registerListing(bytes32 productId, uint128 pricePerKgWei, uint64 availableQuantityHundredths, bool active)',
+  'function setListingActive(bytes32 productId, bool active)',
+  'function getListing(bytes32 productId) view returns (tuple(address seller, uint128 pricePerKgWei, uint64 availableQuantityHundredths, bool active))',
+  'function getOrdersForAccount(address account) view returns (uint256[])',
+  'function getOrder(uint256 orderId) view returns (tuple(bytes32 productId, address buyer, address seller, uint64 quantityHundredths, uint128 pricePerKgWei, uint128 totalWei, uint64 purchasedAt, uint64 fulfilledAt, uint64 reviewDeadline, uint8 status))',
+  'function purchase(bytes32 productId, uint64 quantityHundredths, bytes32 purchaseKey) payable returns (uint256 orderId)',
+  'function markFulfilled(uint256 orderId)',
+  'function confirmFulfillment(uint256 orderId)',
+  'function openDispute(uint256 orderId)',
+  'function resolveDispute(uint256 orderId, bool releaseToSeller)',
+  'function refundAfterFulfillmentTimeout(uint256 orderId)',
+  'function releaseAfterReviewTimeout(uint256 orderId)',
+  'event PurchaseCreated(uint256 indexed orderId, bytes32 indexed productId, address indexed buyer, address seller, uint64 quantityHundredths, uint128 pricePerKgWei, uint128 totalWei, uint64 purchasedAt)',
+  'event EscrowFunded(uint256 indexed orderId, address indexed buyer, uint256 amountWei)',
+  'event OrderFulfilled(uint256 indexed orderId, address indexed seller, uint64 reviewDeadline)',
+  'event DisputeOpened(uint256 indexed orderId, address indexed buyer)',
+  'event EscrowReleased(uint256 indexed orderId, address indexed recipient, uint256 amountWei)',
+  'event EscrowRefunded(uint256 indexed orderId, address indexed recipient, uint256 amountWei)',
+];
 
 /**
  * Check if a contract address is configured and valid
@@ -57,6 +82,29 @@ export function isProducerRegistryConfigured() {
 
 export function isBatchRegistryConfigured() {
   return isAddressConfigured(CONTRACT_ADDRESSES.batchRegistry);
+}
+
+export function isPaymentEscrowConfigured() {
+  return isAddressConfigured(CONTRACT_ADDRESSES.paymentEscrow);
+}
+
+export function getPaymentEscrowReadOnly(customProvider = null) {
+  if (!isPaymentEscrowConfigured()) {
+    throw new Error('Payment escrow contract address is not configured in VITE_PAYMENT_ESCROW_ADDRESS');
+  }
+  return new ethers.Contract(
+    CONTRACT_ADDRESSES.paymentEscrow,
+    PaymentEscrowABI,
+    customProvider || getFallbackProvider()
+  );
+}
+
+export function getPaymentEscrowWithSigner(signer) {
+  if (!signer) throw new Error('A MetaMask signer is required for escrow transactions');
+  if (!isPaymentEscrowConfigured()) {
+    throw new Error('Payment escrow contract address is not configured in VITE_PAYMENT_ESCROW_ADDRESS');
+  }
+  return new ethers.Contract(CONTRACT_ADDRESSES.paymentEscrow, PaymentEscrowABI, signer);
 }
 
 /**

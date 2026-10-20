@@ -1,14 +1,23 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { ethers } from 'ethers';
 import { ArrowLeft, CheckCircle2, MapPin, Package, QrCode, ShieldCheck, ShoppingCart } from 'lucide-react';
 import EmptyState from '../../components/common/EmptyState';
 import ProductionTimeline from '../../components/common/ProductionTimeline';
 import QRPreviewModal from '../../components/common/QRPreviewModal';
+import { useWallet } from '../../context/WalletContext';
 import { productsApi } from '../../lib/api';
+import {
+  CONTRACT_ADDRESSES,
+  getPaymentEscrowWithSigner,
+  SEPOLIA_CHAIN_ID_DECIMAL,
+} from '../../contracts';
+import { calculateEscrowTotalWei, getEscrowProductId, quantityToHundredths } from '../../lib/escrow';
 import { normalizeProduct } from '../../lib/marketplace';
 
 export default function ProductDetail() {
   const { id } = useParams();
+  const { isConnected, connect, getSigner } = useWallet();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -16,8 +25,10 @@ export default function ProductDetail() {
   const [confirming, setConfirming] = useState(false);
   const [purchaseBusy, setPurchaseBusy] = useState(false);
   const [purchaseError, setPurchaseError] = useState('');
-  const [purchaseRequestKey, setPurchaseRequestKey] = useState(() => crypto.randomUUID());
   const [order, setOrder] = useState(null);
+  const [paymentState, setPaymentState] = useState('idle');
+  const [transactionHash, setTransactionHash] = useState('');
+  const [settlementPending, setSettlementPending] = useState(false);
   const [qrModalOpen, setQrModalOpen] = useState(false);
 
   useEffect(() => {
@@ -36,6 +47,22 @@ export default function ProductDetail() {
   }, [id]);
 
   const requestedKg = Number(quantity);
+  const requestedHundredths = useMemo(() => {
+    try {
+      return quantityToHundredths(quantity);
+    } catch {
+      return 0n;
+    }
+  }, [quantity]);
+  const pricePerKgWei = product?.payment_price_per_kg_wei
+    ? BigInt(product.payment_price_per_kg_wei)
+    : 0n;
+  const totalPaymentWei = useMemo(
+    () => pricePerKgWei > 0n && requestedHundredths > 0n
+      ? calculateEscrowTotalWei(pricePerKgWei, requestedHundredths)
+      : 0n,
+    [pricePerKgWei, requestedHundredths]
+  );
   const totalPrice = useMemo(
     () => Number.isFinite(requestedKg) && product ? requestedKg * product.pricePerKg : 0,
     [requestedKg, product]
@@ -44,22 +71,135 @@ export default function ProductDetail() {
     && requestedKg >= 0.01
     && requestedKg <= (product?.stockKg || 0)
     && Math.abs(Math.round(requestedKg * 100) - requestedKg * 100) < 1e-8
-    && totalPrice <= 999999999999.99;
+    && totalPrice <= 999999999999.99
+    && requestedHundredths > 0n
+    && pricePerKgWei > 0n;
 
-  const reserveOrder = async () => {
-    if (!product || !quantityIsValid) return;
+  const syncConfirmedPurchase = async (productId, txHash, quantityKg) => {
+    const response = await productsApi.syncEscrowPurchase(productId, txHash);
+    if (response.status !== 'confirmed') {
+      setSettlementPending(true);
+      setPaymentState('pending');
+      return;
+    }
+    setSettlementPending(false);
+    setPaymentState('confirmed');
+    setOrder((current) => ({
+      ...current,
+      id: response.order.escrow_order_id,
+      status: 'confirmed',
+      transactionHash: txHash,
+      quantityKg,
+    }));
+    setProduct((current) => ({
+      ...current,
+      stockKg: Number.isFinite(Number(response.remaining_quantity_kg))
+        ? Number(response.remaining_quantity_kg)
+        : Math.max(0, current.stockKg - quantityKg),
+    }));
+  };
+
+  const retrySettlement = async () => {
+    if (!product || !transactionHash || !order) return;
     setPurchaseBusy(true);
     setPurchaseError('');
     try {
-      const response = await productsApi.purchase(product.id, requestedKg, purchaseRequestKey);
-      setOrder(response.order);
-      setProduct((current) => ({
-        ...current,
-        stockKg: Number(response.order.remaining_quantity_kg),
-      }));
-      setConfirming(false);
+      await syncConfirmedPurchase(product.id, transactionHash, order.quantityKg);
     } catch (error) {
-      setPurchaseError(error.message || 'Could not reserve this order.');
+      if (error.data?.status === 'failed') setPaymentState('failed');
+      else setSettlementPending(true);
+      setPurchaseError(`The Sepolia purchase is confirmed, but inventory sync is pending: ${error.message}`);
+    } finally {
+      setPurchaseBusy(false);
+    }
+  };
+
+  const purchaseWithEscrow = async () => {
+    if (!product || !quantityIsValid) return;
+    setPurchaseBusy(true);
+    setPurchaseError('');
+    setPaymentState('pending');
+    setSettlementPending(false);
+    setTransactionHash('');
+    setOrder(null);
+    let txHash = '';
+    let receiptConfirmed = false;
+    try {
+      if (!isConnected) {
+        await connect();
+        setPaymentState('idle');
+        setConfirming(false);
+        return;
+      }
+      const signer = await getSigner();
+      if ((await signer.provider.getNetwork()).chainId !== BigInt(SEPOLIA_CHAIN_ID_DECIMAL)) {
+        throw new Error('Switch MetaMask to Sepolia before paying with test ETH.');
+      }
+      const escrow = getPaymentEscrowWithSigner(signer);
+      const productId = getEscrowProductId(product.id);
+      const listing = await escrow.getListing(productId);
+      if (!listing.active
+          || ethers.getAddress(listing.seller) !== ethers.getAddress(product.producer.walletAddress)
+          || listing.pricePerKgWei !== pricePerKgWei
+          || listing.availableQuantityHundredths < requestedHundredths) {
+        throw new Error('The Sepolia listing changed or no longer has enough inventory. Refresh the product and try again.');
+      }
+      const transaction = await escrow.purchase(
+        productId,
+        requestedHundredths,
+        ethers.hexlify(ethers.randomBytes(32)),
+        { value: totalPaymentWei }
+      );
+      txHash = transaction.hash;
+      setTransactionHash(txHash);
+      const receipt = await transaction.wait(2);
+      if (receipt.status !== 1) throw new Error('The Sepolia purchase transaction reverted.');
+      receiptConfirmed = true;
+      const purchaseLog = receipt.logs
+        .filter((log) => log.address.toLowerCase() === CONTRACT_ADDRESSES.paymentEscrow.toLowerCase())
+        .map((log) => {
+          try {
+            return escrow.interface.parseLog(log);
+          } catch {
+            return null;
+          }
+        })
+        .find((log) => log?.name === 'PurchaseCreated');
+      if (!purchaseLog) throw new Error('Confirmed transaction did not contain the expected escrow purchase event.');
+      setPaymentState('confirmed');
+      setOrder({
+        id: purchaseLog.args.orderId.toString(),
+        status: 'confirmed',
+        transactionHash: txHash,
+        quantityKg: requestedKg,
+        totalWei: purchaseLog.args.totalWei.toString(),
+      });
+      setConfirming(false);
+      try {
+        await syncConfirmedPurchase(product.id, txHash, requestedKg);
+      } catch (syncError) {
+        setSettlementPending(true);
+        setPurchaseError(`Payment is confirmed on Sepolia; application inventory sync is pending: ${syncError.message}`);
+      }
+    } catch (error) {
+      if (receiptConfirmed) {
+        setPaymentState('confirmed');
+        setSettlementPending(true);
+        setPurchaseError(`Payment is confirmed on Sepolia; application inventory sync is pending: ${error.message}`);
+      } else if (txHash) {
+        const receipt = await getSigner()
+          .then((signer) => signer.provider.getTransactionReceipt(txHash))
+          .catch(() => null);
+        const failedOnChain = receipt?.status === 0 || error.data?.status === 'failed';
+        setPaymentState(failedOnChain ? 'failed' : 'pending');
+        setSettlementPending(!failedOnChain);
+        setPurchaseError(failedOnChain
+          ? `Sepolia transaction ${txHash} failed. No escrow purchase was recorded.`
+          : `Transaction ${txHash} was submitted; check its status or retry inventory sync. ${error.message}`);
+      } else {
+        setPaymentState('failed');
+        setPurchaseError(error.message || 'Escrow payment could not be completed.');
+      }
     } finally {
       setPurchaseBusy(false);
     }
@@ -89,18 +229,55 @@ export default function ProductDetail() {
         Back to Marketplace
       </Link>
 
-      {order && (
+      {(order || transactionHash) && (
         <div role="status" className="p-4 rounded-2xl bg-forest-800 text-white shadow-warm">
           <div className="flex items-start gap-3">
             <CheckCircle2 className="w-5 h-5 text-gold-300 shrink-0" />
             <div>
-              <h2 className="font-bold text-sm">Order reserved — no payment collected</h2>
+              <h2 className="font-bold text-sm">
+                {paymentState === 'confirmed'
+                  ? 'Purchase confirmed — payment held in escrow'
+                  : paymentState === 'failed' ? 'Payment failed' : 'Payment transaction pending'}
+              </h2>
               <p className="text-xs text-cream-200 mt-1">
-                Order {order.id} · {quantity} kg · ₹{Number(order.total_amount_inr).toFixed(2)}.
-                Payment status: pending. This reservation did not submit a blockchain transaction.
+                {order?.id ? `Escrow order #${order.id} · ` : ''}
+                {Number(order?.quantityKg ?? requestedKg).toFixed(2)} kg ·
+                {' '}{ethers.formatEther(order?.totalWei ? BigInt(order.totalWei) : totalPaymentWei)} Sepolia ETH.
+                Funds remain in escrow until buyer confirmation or the defined timeout/dispute resolution.
               </p>
+              {transactionHash && (
+                <a
+                  href={`https://sepolia.etherscan.io/tx/${transactionHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-block text-xs underline"
+                >
+                  View Sepolia transaction
+                </a>
+              )}
+              <p className="mt-2 text-[11px] text-cream-200">
+                On-chain fulfillment is a seller attestation; it does not independently prove physical delivery.
+              </p>
+              <Link to="/orders" className="mt-2 inline-block text-xs font-bold text-gold-300 underline">
+                View escrow orders
+              </Link>
+              {settlementPending && (
+                <button
+                  type="button"
+                  disabled={purchaseBusy}
+                  onClick={retrySettlement}
+                  className="ml-3 text-xs font-bold underline disabled:opacity-60"
+                >
+                  Retry inventory sync
+                </button>
+              )}
             </div>
           </div>
+        </div>
+      )}
+      {paymentState === 'failed' && (
+        <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          Escrow payment failed. No successful purchase is recorded on-chain.
         </div>
       )}
 
@@ -168,7 +345,11 @@ export default function ProductDetail() {
 
             <div className="p-4 rounded-2xl bg-cream-50 border border-cream-200/80">
               <span className="text-3xl font-black text-earth-950">₹{product.pricePerKg.toFixed(2)}</span>
-              <span className="text-xs text-stone-500 ml-1">per kilogram</span>
+              <span className="text-xs text-stone-500 ml-1">INR reference/kg</span>
+              <p className="mt-2 text-sm font-bold text-forest-800">
+                {pricePerKgWei > 0n ? ethers.formatEther(pricePerKgWei) : '—'} Sepolia ETH/kg
+              </p>
+              <p className="text-[10px] text-stone-500">Testnet ETH only; no INR conversion or real-money payment.</p>
             </div>
 
             <div className="space-y-2">
@@ -182,15 +363,16 @@ export default function ProductDetail() {
                 max={product.stockKg}
                 step="0.01"
                 value={quantity}
+                disabled={purchaseBusy || Boolean(order)}
                 onChange={(event) => {
                   setQuantity(event.target.value);
-                  setPurchaseRequestKey(crypto.randomUUID());
                   setConfirming(false);
                 }}
                 className="w-full px-3 py-2.5 rounded-xl border border-cream-300 text-sm focus:ring-2 focus:ring-gold-400 focus:outline-hidden"
               />
               <p className="text-xs text-stone-500">
-                {product.stockKg.toFixed(2)} kg available · Total ₹{totalPrice.toFixed(2)}
+                {product.stockKg.toFixed(2)} kg available · INR reference ₹{totalPrice.toFixed(2)} ·
+                {' '}{ethers.formatEther(totalPaymentWei)} Sepolia ETH payable
               </p>
             </div>
 
@@ -203,16 +385,17 @@ export default function ProductDetail() {
             {confirming ? (
               <div className="rounded-2xl border border-gold-300 bg-gold-50 p-4 space-y-3">
                 <p className="text-xs text-earth-900">
-                  Reserve {requestedKg.toFixed(2)} kg for ₹{totalPrice.toFixed(2)}? No payment will be taken.
+                  Pay {ethers.formatEther(totalPaymentWei)} Sepolia ETH for {requestedKg.toFixed(2)} kg?
+                  The transaction places the testnet ETH into escrow.
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     disabled={purchaseBusy}
-                    onClick={reserveOrder}
+                    onClick={purchaseWithEscrow}
                     className="py-2.5 rounded-xl bg-forest-800 text-white text-xs font-bold disabled:opacity-60"
                   >
-                    {purchaseBusy ? 'Reserving…' : 'Confirm reservation'}
+                    {purchaseBusy ? 'Waiting for Sepolia…' : 'Confirm escrow payment'}
                   </button>
                   <button
                     type="button"
@@ -226,18 +409,31 @@ export default function ProductDetail() {
             ) : (
               <button
                 type="button"
-                disabled={!quantityIsValid || product.stockKg <= 0 || Boolean(order)}
-                onClick={() => setConfirming(true)}
+                disabled={!quantityIsValid || product.stockKg <= 0 || Boolean(order) || !CONTRACT_ADDRESSES.paymentEscrow}
+                onClick={async () => {
+                  if (!isConnected) {
+                    await connect();
+                    return;
+                  }
+                  setConfirming(true);
+                }}
                 className="w-full py-3.5 px-4 rounded-xl bg-forest-800 hover:bg-forest-900 text-white font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ShoppingCart className="w-4 h-4 text-gold-300" />
-                {order ? 'Order reserved' : 'Reserve order — no payment'}
+                {order ? 'Escrow order created' : 'Buy with Sepolia test ETH'}
               </button>
             )}
 
             <p className="text-[11px] text-stone-500">
-              Reservation records a pending order and updates available stock. Checkout payments are not enabled.
+              Funds are held by the dedicated escrow contract, never by this app. A successful confirmed Sepolia
+              receipt is required before inventory is updated.
             </p>
+            {!CONTRACT_ADDRESSES.paymentEscrow && (
+              <p role="status" className="text-[11px] text-amber-800">
+                Escrow contract is not configured. Purchases are disabled until the contract design is reviewed,
+                approved, deployed to Sepolia, and its address is configured.
+              </p>
+            )}
 
             <div className="grid grid-cols-2 gap-2">
               <Link

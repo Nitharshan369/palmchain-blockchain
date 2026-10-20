@@ -9,6 +9,7 @@
     "check:sepolia": "hardhat run scripts/check-account.cjs --network sepolia",
     "deploy:local": "hardhat run scripts/deploy.cjs --network localhost",
     "deploy:sepolia": "hardhat run scripts/deploy.cjs --network sepolia",
+    "deploy:escrow:sepolia": "hardhat run scripts/deploy-payment-escrow.cjs --network sepolia",
     "verify:sepolia": "hardhat run scripts/verify-contracts.cjs --network sepolia"
   },
   "keywords": [

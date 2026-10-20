@@ -1,16 +1,20 @@
 import React, { useMemo, useState } from 'react';
+import { ethers } from 'ethers';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, ExternalLink, LoaderCircle, PackagePlus, Pause, Play, RefreshCw } from 'lucide-react';
 import EmptyState from '../../components/common/EmptyState';
 import WalletButton from '../../components/common/WalletButton';
 import { useWallet } from '../../context/WalletContext';
+import { getPaymentEscrowWithSigner, SEPOLIA_CHAIN_ID_DECIMAL } from '../../contracts';
 import { productsApi } from '../../lib/api';
+import { getEscrowProductId, parseEthPerKg, quantityToHundredths } from '../../lib/escrow';
 
 const emptyForm = {
   batch_id: '',
   title: '',
   description: '',
   price_inr: '',
+  price_eth_per_kg: '',
   quantity_kg: '',
   image_urls: '',
 };
@@ -63,6 +67,9 @@ export default function ProducerListings() {
       title: product.title,
       description: product.description || '',
       price_inr: String(product.price_inr),
+      price_eth_per_kg: product.payment_price_per_kg_wei
+        ? ethers.formatEther(BigInt(product.payment_price_per_kg_wei))
+        : '',
       quantity_kg: String(product.available_quantity_kg),
       image_urls: (product.image_urls || (product.package_image_url ? [product.package_image_url] : [])).join(', '),
     });
@@ -78,22 +85,84 @@ export default function ProducerListings() {
 
   const parseImageUrls = (value) => value.split(',').map((url) => url.trim()).filter(Boolean);
 
+  const publishEscrowListing = async (product, signer) => {
+    const network = await signer.provider.getNetwork();
+    if (network.chainId !== BigInt(SEPOLIA_CHAIN_ID_DECIMAL)) {
+      throw new Error('Switch MetaMask to Sepolia before publishing the testnet listing.');
+    }
+    const contract = getPaymentEscrowWithSigner(signer);
+    const productId = getEscrowProductId(product.id);
+    const quantity = Number(product.available_quantity_kg) > 0
+      ? quantityToHundredths(product.available_quantity_kg)
+      : 0n;
+    let transaction;
+    if (quantity === 0n) {
+      transaction = await contract.setListingActive(productId, false);
+    } else {
+      transaction = await contract.registerListing(
+        productId,
+        BigInt(product.payment_price_per_kg_wei),
+        quantity,
+        Boolean(product.is_active)
+      );
+    }
+    const receipt = await transaction.wait(2);
+    if (receipt.status !== 1) throw new Error('Sepolia did not confirm the escrow listing transaction.');
+    await productsApi.syncEscrowListing(product.id, transaction.hash);
+    return transaction.hash;
+  };
+
+  const pauseEscrowListing = async (product, signer) => {
+    if ((await signer.provider.getNetwork()).chainId !== BigInt(SEPOLIA_CHAIN_ID_DECIMAL)) {
+      throw new Error('Switch MetaMask to Sepolia before changing an escrow listing.');
+    }
+    const contract = getPaymentEscrowWithSigner(signer);
+    const productId = getEscrowProductId(product.id);
+    const seller = await signer.getAddress();
+    const listing = await contract.getListing(productId);
+    if (!listing.active) return '';
+    if (ethers.getAddress(listing.seller) !== ethers.getAddress(seller)) {
+      throw new Error('The connected wallet is not the on-chain escrow listing seller.');
+    }
+    const orderIds = await contract.getOrdersForAccount(seller);
+    for (const orderId of orderIds) {
+      const order = await contract.getOrder(orderId);
+      if (order.productId.toLowerCase() === productId.toLowerCase()
+          && [1, 2, 3].includes(Number(order.status))) {
+        throw new Error('Resolve this listing’s escrowed, fulfilled, or disputed orders before changing it.');
+      }
+    }
+    const transaction = await contract.setListingActive(productId, false);
+    const receipt = await transaction.wait(2);
+    if (receipt.status !== 1) throw new Error('Sepolia did not confirm pausing the escrow listing.');
+    return transaction.hash;
+  };
+
   const saveListing = async (event) => {
     event.preventDefault();
     setError('');
     setNotice('');
     const imageUrls = parseImageUrls(form.image_urls);
+    let paymentPriceWei;
+    try {
+      paymentPriceWei = parseEthPerKg(form.price_eth_per_kg).toString();
+    } catch (priceError) {
+      setError(priceError.message);
+      return;
+    }
     const payload = {
       ...(editingProduct ? {} : { batch_id: form.batch_id }),
       title: form.title.trim(),
       description: form.description.trim(),
       price_inr: Number(form.price_inr),
+      payment_price_per_kg_wei: paymentPriceWei,
       quantity_kg: Number(form.quantity_kg),
       image_urls: imageUrls,
       ...(editingProduct ? { is_active: selectedStatus } : {}),
     };
     if (!payload.title || !Number.isFinite(payload.price_inr) || payload.price_inr < 0.01 || payload.price_inr > 1000000
         || Math.abs(Math.round(payload.price_inr * 100) - payload.price_inr * 100) > 1e-8
+        || BigInt(payload.payment_price_per_kg_wei) <= 0n
         || !Number.isFinite(payload.quantity_kg) || payload.quantity_kg <= 0 || payload.quantity_kg > 100000
         || Math.abs(Math.round(payload.quantity_kg * 100) - payload.quantity_kg * 100) > 1e-8
         || (selectedBatch && payload.quantity_kg > maxQuantity)
@@ -106,7 +175,11 @@ export default function ProducerListings() {
     try {
       const signer = await getSigner();
       if (editingProduct) {
-        const response = await productsApi.update(editingProduct.id, payload, signer);
+        const deactivationHash = await pauseEscrowListing(editingProduct, signer);
+        const updatePayload = deactivationHash
+          ? { ...payload, escrow_deactivation_transaction_hash: deactivationHash }
+          : payload;
+        const response = await productsApi.update(editingProduct.id, updatePayload, signer);
         const oldQuantity = Number(editingProduct.available_quantity_kg);
         const reservationDelta = selectedStatus
           ? editingProduct.is_active ? payload.quantity_kg - oldQuantity : payload.quantity_kg
@@ -117,18 +190,20 @@ export default function ProducerListings() {
         setBatches((current) => current.map((batch) => batch.id === editingProduct.batch_id
           ? { ...batch, marketplace_reserved_kg: Number(batch.marketplace_reserved_kg || 0) + reservationDelta }
           : batch));
-        setNotice('Listing updated.');
+        const transactionHash = await publishEscrowListing(response.product, signer);
+        setNotice(`Listing updated and confirmed on Sepolia (${transactionHash.slice(0, 12)}…).`);
       } else {
         const response = await productsApi.create(payload, signer);
         setProducts((current) => [{ ...response.product, batch: selectedBatch }, ...current]);
         setBatches((current) => current.map((batch) => batch.id === selectedBatch.id
           ? { ...batch, marketplace_reserved_kg: Number(batch.marketplace_reserved_kg || 0) + payload.quantity_kg }
           : batch));
-        setNotice('Listing published. Its batch status remains authoritative on-chain.');
+        const transactionHash = await publishEscrowListing(response.product, signer);
+        setNotice(`Listing and ETH/kg price confirmed on Sepolia (${transactionHash.slice(0, 12)}…).`);
       }
       resetForm();
     } catch (saveError) {
-      setError(saveError.message || 'Could not save this listing.');
+      setError(`Listing may be saved in Supabase, but escrow confirmation did not complete: ${saveError.message || 'Unknown error'}. Retry by editing the listing.`);
     } finally {
       setSaving(false);
     }
@@ -140,14 +215,25 @@ export default function ProducerListings() {
     setSaving(true);
     try {
       const signer = await getSigner();
-      const response = await productsApi.update(product.id, {
+      const deactivationHash = product.is_active ? await pauseEscrowListing(product, signer) : '';
+      const updatePayload = {
         title: product.title,
         description: product.description || '',
         price_inr: Number(product.price_inr),
+        payment_price_per_kg_wei: String(product.payment_price_per_kg_wei),
         quantity_kg: Number(product.available_quantity_kg),
         image_urls: product.image_urls || (product.package_image_url ? [product.package_image_url] : []),
         is_active: !product.is_active,
-      }, signer);
+        ...(deactivationHash ? { escrow_deactivation_transaction_hash: deactivationHash } : {}),
+      };
+      const response = await productsApi.update(product.id, updatePayload, signer);
+      let transactionHash;
+      if (!response.product.is_active && deactivationHash) {
+        await productsApi.syncEscrowListing(product.id, deactivationHash);
+        transactionHash = deactivationHash;
+      } else {
+        transactionHash = await publishEscrowListing(response.product, signer);
+      }
       const reservationDelta = product.is_active
         ? -Number(product.available_quantity_kg)
         : Number(product.available_quantity_kg);
@@ -157,7 +243,7 @@ export default function ProducerListings() {
       setBatches((current) => current.map((batch) => batch.id === product.batch_id
         ? { ...batch, marketplace_reserved_kg: Number(batch.marketplace_reserved_kg || 0) + reservationDelta }
         : batch));
-      setNotice(response.product.is_active ? 'Listing reactivated.' : 'Listing paused and its remaining quantity released.');
+      setNotice(`${response.product.is_active ? 'Listing reactivated' : 'Listing paused and its remaining quantity released'} on Sepolia (${transactionHash.slice(0, 12)}…).`);
     } catch (toggleError) {
       setError(toggleError.message || 'Could not change listing status.');
     } finally {
@@ -241,6 +327,7 @@ export default function ProducerListings() {
               {[
                 ['title', 'Product title', 'text'],
                 ['price_inr', 'Price per kilogram (INR)', 'number'],
+                ['price_eth_per_kg', 'Sepolia ETH per kilogram (testnet only)', 'number'],
                 ['quantity_kg', 'Available quantity (kg)', 'number'],
               ].map(([name, label, type]) => (
                 <label key={name} className="block text-xs font-semibold text-stone-600">
@@ -248,15 +335,18 @@ export default function ProducerListings() {
                   <input
                     required
                     type={type}
-                    min={name === 'price_inr' ? '0.01' : name === 'quantity_kg' ? '0.01' : undefined}
+                    min={name === 'price_inr' ? '0.01' : name === 'quantity_kg' ? '0.01' : name === 'price_eth_per_kg' ? '0.000000000000000001' : undefined}
                     max={name === 'price_inr' ? '1000000' : name === 'quantity_kg' ? maxQuantity : undefined}
-                    step={type === 'number' ? '0.01' : undefined}
+                    step={name === 'price_eth_per_kg' ? 'any' : type === 'number' ? '0.01' : undefined}
                     value={form[name]}
                     onChange={(event) => setForm((current) => ({ ...current, [name]: event.target.value }))}
                     className="mt-1 w-full px-3 py-2.5 rounded-xl border border-cream-300 text-xs"
                   />
                 </label>
               ))}
+              <p className="text-[11px] text-amber-800">
+                Sepolia ETH is testnet-only and has no INR conversion here. The contract enforces this separate price.
+              </p>
               {selectedBatch && (
                 <p className="text-[11px] text-stone-500">
                   Unlisted inventory available for this listing: {maxQuantity.toFixed(2)} kg

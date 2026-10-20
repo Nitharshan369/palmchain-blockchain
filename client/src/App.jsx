@@ -10,6 +10,7 @@ import ProducerLayout from './components/layout/ProducerLayout';
 import Home from './pages/public/Home';
 import Marketplace from './pages/public/Marketplace';
 import ProductDetail from './pages/public/ProductDetail';
+import EscrowOrders from './pages/public/EscrowOrders';
 import PublicVerification from './pages/public/PublicVerification';
 
 // Producer Pages
@@ -71,6 +72,7 @@ export default function App() {
 
           {/* 3. Product Details */}
           <Route path="/product/:id" element={<ProductDetail />} />
+          <Route path="/orders" element={<EscrowOrders />} />
 
           {/* 4. Public Batch Verification */}
           <Route path="/verify/:batchId" element={<PublicVerification />} />

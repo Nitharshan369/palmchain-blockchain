@@ -6,6 +6,7 @@ export const MAX_PRICE_INR = 1000000;
 export const MAX_QUANTITY_KG = 100000;
 export const MAX_IMAGE_COUNT = 8;
 export const SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000;
+export const MAX_PAYMENT_PRICE_WEI = (1n << 128n) - 1n;
 
 export function validateListingInput(input = {}) {
   const errors = {};
@@ -14,6 +15,7 @@ export function validateListingInput(input = {}) {
   const quantity = Number(input.quantity_kg);
   const description = input.description == null ? '' : input.description;
   const images = input.image_urls ?? [];
+  const paymentPriceWei = input.payment_price_per_kg_wei;
 
   if (!title || title.length > 255) errors.title = 'Title must contain 1 to 255 characters';
   if (!Number.isFinite(price) || price < MIN_PRICE_INR || price > MAX_PRICE_INR) {
@@ -29,6 +31,10 @@ export function validateListingInput(input = {}) {
   if (typeof description !== 'string' || description.length > 10000) {
     errors.description = 'Description must not exceed 10000 characters';
   }
+  if (typeof paymentPriceWei !== 'string' || paymentPriceWei.length > 39 || !/^[1-9]\d*$/.test(paymentPriceWei)
+      || BigInt(paymentPriceWei) > MAX_PAYMENT_PRICE_WEI) {
+    errors.payment_price_per_kg_wei = 'A valid positive Sepolia ETH/kg price is required';
+  }
   if (!Array.isArray(images) || images.length > MAX_IMAGE_COUNT
       || images.some((image) => typeof image !== 'string' || image.length > 2048 || !isHttpImageUrl(image))) {
     errors.image_urls = `Provide no more than ${MAX_IMAGE_COUNT} image URLs, each up to 2048 characters`;
@@ -37,7 +43,7 @@ export function validateListingInput(input = {}) {
   return {
     valid: Object.keys(errors).length === 0,
     errors,
-    value: { title, price, quantity, description, images },
+    value: { title, price, quantity, description, images, paymentPriceWei },
   };
 }
 

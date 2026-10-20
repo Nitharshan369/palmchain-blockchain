@@ -19,6 +19,7 @@ test('listing validation accepts valid INR/kg and quantity values and rejects in
     description: 'Traditional batch',
     price_inr: '245.50',
     quantity_kg: '10.25',
+    payment_price_per_kg_wei: '20000000000000000',
     image_urls: ['https://example.test/image.jpg'],
   }).valid, true);
 
@@ -26,6 +27,7 @@ test('listing validation accepts valid INR/kg and quantity values and rejects in
     title: ' ',
     price_inr: 0,
     quantity_kg: -1,
+    payment_price_per_kg_wei: '0',
     image_urls: Array(9).fill('https://example.test/image.jpg'),
   });
   assert.equal(invalid.valid, false);
@@ -33,6 +35,7 @@ test('listing validation accepts valid INR/kg and quantity values and rejects in
   assert.ok(invalid.errors.price_inr);
   assert.ok(invalid.errors.quantity_kg);
   assert.ok(invalid.errors.image_urls);
+  assert.ok(invalid.errors.payment_price_per_kg_wei);
 });
 
 test('producer signature is bound to method, path, timestamp, nonce, and body', async () => {
