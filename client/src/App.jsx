@@ -71,6 +71,7 @@ export default function App() {
           <Route path="/marketplace" element={<Navigate to="/products" replace />} />
 
           {/* 3. Product Details */}
+          <Route path="/products/:id" element={<ProductDetail />} />
           <Route path="/product/:id" element={<ProductDetail />} />
           <Route path="/orders" element={<EscrowOrders />} />
 

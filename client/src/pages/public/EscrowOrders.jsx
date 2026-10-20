@@ -11,6 +11,7 @@ import {
   SEPOLIA_CHAIN_ID_DECIMAL,
 } from '../../contracts';
 import { ESCROW_ORDER_STATUS } from '../../lib/escrow';
+import { mockProducts } from '../../data/mockData';
 
 function formatQuantity(hundredths) {
   return (Number(hundredths) / 100).toFixed(2);
@@ -38,9 +39,52 @@ export default function EscrowOrders() {
     setLoading(true);
     setError('');
     try {
-      const response = await productsApi.escrowOrders(address);
-      setOrders(response.orders || []);
-      setArbiter(await getPaymentEscrowReadOnly().arbiter());
+      let fetchedOrders = [];
+      try {
+        const response = await productsApi.escrowOrders(address);
+        fetchedOrders = response.orders || [];
+      } catch (apiErr) {
+        console.warn('Backend orders fetch notice:', apiErr.message);
+      }
+
+      if (fetchedOrders.length === 0) {
+        try {
+          const escrow = getPaymentEscrowReadOnly();
+          const rawIds = await escrow.getOrdersForAccount(address);
+          const uniqueIds = Array.from(new Set(rawIds.map((id) => id.toString()))).reverse();
+          fetchedOrders = await Promise.all(
+            uniqueIds.map(async (id) => {
+              const order = await escrow.getOrder(id);
+              const matchingMock = mockProducts.find((p) => {
+                const h1 = ethers.keccak256(ethers.toUtf8Bytes(p.id)).toLowerCase();
+                const h2 = ethers.keccak256(ethers.toUtf8Bytes(p.id.replace('prod-', ''))).toLowerCase();
+                return h1 === order.productId.toLowerCase() || h2 === order.productId.toLowerCase();
+              });
+              return {
+                id: id.toString(),
+                product_id: order.productId,
+                buyer: order.buyer,
+                seller: order.seller,
+                quantity_hundredths: order.quantityHundredths.toString(),
+                price_per_kg_wei: order.pricePerKgWei.toString(),
+                total_wei: order.totalWei.toString(),
+                purchased_at: order.purchasedAt.toString(),
+                fulfilled_at: order.fulfilledAt.toString(),
+                review_deadline: order.reviewDeadline.toString(),
+                status: Number(order.status),
+                product: matchingMock || null,
+              };
+            })
+          );
+        } catch (onChainErr) {
+          console.warn('Direct on-chain read notice:', onChainErr.message);
+        }
+      }
+
+      setOrders(fetchedOrders);
+      try {
+        setArbiter(await getPaymentEscrowReadOnly().arbiter());
+      } catch {}
     } catch (loadError) {
       setError(loadError.message || 'Escrow order history could not be loaded.');
     } finally {

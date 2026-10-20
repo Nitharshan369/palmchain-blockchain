@@ -21,6 +21,12 @@
         "0xD4B4BF61a6e70bd4e9B44E3941523c57Ed27d00D"
       ],
       "abiPath": "artifacts/contracts/BatchRegistry.sol/BatchRegistry.json"
+    },
+    "PalmChainPaymentEscrow": {
+      "address": "0x4EB51644e84076AE2A7A7F426f8fAff18703AA4e",
+      "transactionHash": "0x4f326b8f9814ffcb69973c70d8fd8f61c6e855ddf1d875ffbba5bbf597d0fdd8",
+      "arbiter": "0x74de526B0CDFB86D682cB293d4006076a2FE6088",
+      "abiPath": "artifacts/contracts/PalmChainPaymentEscrow.sol/PalmChainPaymentEscrow.json"
     }
   }
 }

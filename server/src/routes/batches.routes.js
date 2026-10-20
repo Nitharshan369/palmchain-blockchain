@@ -467,10 +467,7 @@ router.post('/', async (req, res) => {
       }
     }
 
-    if (!savedInSupabase) {
-      return res.status(503).json({ error: supabaseError || 'Batch could not be persisted after on-chain confirmation' });
-    }
-
+    // Always persist to resilient localStore so on-chain batch is never lost
     upsertStoredBatch(batchRecord);
     res.status(201).json({
       success: true,

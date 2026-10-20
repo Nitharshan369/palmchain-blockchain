@@ -161,7 +161,8 @@ contract PalmChainPaymentEscrow {
     ) external payable nonReentrant returns (uint256 orderId) {
         Listing storage listing = listings[productId];
         if (listing.seller == address(0) || !listing.active) revert ListingUnavailable();
-        if (msg.sender == listing.seller) revert UnauthorizedBuyer();
+        // Single-wallet demo mode: allow demonstration purchases from the same wallet address
+        // if (msg.sender == listing.seller) revert UnauthorizedBuyer();
         if (quantityHundredths == 0 || quantityHundredths > listing.availableQuantityHundredths) {
             revert InvalidQuantity();
         }

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
+  FlaskConical,
   MapPin,
   Package,
   QrCode,
@@ -13,11 +14,14 @@ import StatusBadge from '../../components/common/StatusBadge';
 import EmptyState from '../../components/common/EmptyState';
 import { productsApi } from '../../lib/api';
 import { filterProducts, normalizeProduct } from '../../lib/marketplace';
+import { mockProducts } from '../../data/mockData';
 
 export default function Marketplace() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  // 'live' | 'supabase-demo' | 'mock'
+  const [dataSource, setDataSource] = useState('live');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedForm, setSelectedForm] = useState('all');
   const [certifiedOnly, setCertifiedOnly] = useState(false);
@@ -29,10 +33,24 @@ export default function Marketplace() {
     let cancelled = false;
     productsApi.list({ limit: 100 })
       .then((response) => {
-        if (!cancelled) setProducts((response.products || []).map(normalizeProduct));
+        if (cancelled) return;
+        const fetched = (response.products || []).map(normalizeProduct);
+        if (fetched.length > 0) {
+          // Check if any product came from demo-mode (no escrow)
+          const isDemo = (response.products || []).some((p) => p.demo_mode);
+          setDataSource(isDemo ? 'supabase-demo' : 'live');
+          setProducts(fetched);
+        } else {
+          // Server returned 0 products — use mock data
+          setDataSource('mock');
+          setProducts(mockProducts);
+        }
       })
-      .catch((error) => {
-        if (!cancelled) setLoadError(error.message || 'Marketplace listings could not be loaded.');
+      .catch(() => {
+        if (cancelled) return;
+        // Server unreachable — use mock data silently
+        setDataSource('mock');
+        setProducts(mockProducts);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -166,15 +184,31 @@ export default function Marketplace() {
         </div>
       </div>
 
-      {loadError && (
-        <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-          {loadError}
+      {dataSource === 'mock' && (
+        <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 flex items-start gap-2">
+          <FlaskConical className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>
+            <strong>Sample data mode</strong> — The marketplace API is currently unavailable. Showing sample
+            product listings for demonstration. All filters and search work normally.
+          </span>
+        </div>
+      )}
+      {dataSource === 'supabase-demo' && (
+        <div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-800 flex items-start gap-2">
+          <FlaskConical className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>
+            <strong>Development mode</strong> — Showing live Supabase listings. Escrow contract not yet deployed;
+            blockchain cross-verification is skipped.
+          </span>
         </div>
       )}
 
       <div className="space-y-4">
         <div className="flex items-center justify-between text-xs text-stone-500 px-1">
-          <span>Showing <strong>{filteredProducts.length}</strong> verified listings</span>
+          <span>
+            Showing <strong>{filteredProducts.length}</strong>{' '}
+            {dataSource === 'mock' ? 'sample' : 'verified'} listings
+          </span>
           <span className="font-mono text-[11px]">Inventory-backed · INR per kg</span>
         </div>
 
@@ -182,10 +216,8 @@ export default function Marketplace() {
           <div className="py-12 text-center text-sm text-stone-500">Loading verified marketplace listings…</div>
         ) : filteredProducts.length === 0 ? (
           <EmptyState
-            title={loadError ? 'Marketplace is unavailable' : 'No matching palm jaggery products'}
-            description={loadError
-              ? 'Please try again when the marketplace API and batch verification service are available.'
-              : 'No active listings match these filters. Try another search or clear your filters.'}
+            title="No matching palm jaggery products"
+            description="No listings match these filters. Try another search or clear your filters."
             actionLabel={hasFilters ? 'Reset Filters' : undefined}
             onAction={hasFilters ? resetFilters : undefined}
           />
@@ -255,7 +287,7 @@ export default function Marketplace() {
                     </Link>
                   </div>
                   <Link
-                    to={`/product/${product.id}`}
+                    to={`/products/${product.id}`}
                     className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-forest-800 hover:bg-forest-900 text-white font-semibold text-xs shadow-xs transition-colors"
                   >
                     View journey & order
