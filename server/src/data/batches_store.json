@@ -1,0 +1,721 @@
+[
+  {
+    "id": "batch-1792471699502-988",
+    "created_at": "2026-10-20T04:48:19.502Z",
+    "batch_number": "PJG-20261020-SEP496",
+    "batchId": "PJG-20261020-SEP496",
+    "schema_version": "1.0.0",
+    "production_date": "2026-10-20",
+    "harvest_date": "2026-10-20",
+    "processing_date": "2026-10-20",
+    "trees_used": [
+      "PLM-TK-012",
+      "PLM-TK-014",
+      "PLM-TK-018"
+    ],
+    "sourceTreeIds": [
+      "PLM-TK-012",
+      "PLM-TK-014",
+      "PLM-TK-018"
+    ],
+    "tree_count": 3,
+    "neera_liters": 850,
+    "sapVolumeLiters": 850,
+    "total_quantity_kg": 115,
+    "jaggery_kg": 115,
+    "outputKg": 115,
+    "production_notes": "Live Sepolia verification test batch",
+    "stages": [
+      {
+        "order": 1,
+        "name": "Neera Collection",
+        "date": "2026-10-20",
+        "location": "Tenkasi Grove",
+        "operator": "Field Lead",
+        "notes": "Dawn tapping",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "order": 2,
+        "name": "Filtering",
+        "date": "2026-10-20",
+        "location": "Pan House",
+        "operator": "Field Lead",
+        "notes": "Cotton mesh",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "order": 3,
+        "name": "Boiling",
+        "date": "2026-10-20",
+        "location": "Hearth #1",
+        "operator": "Cook",
+        "notes": "Palm frond fuel",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "order": 4,
+        "name": "Concentration",
+        "date": "2026-10-20",
+        "location": "Hearth #1",
+        "operator": "Cook",
+        "notes": "Strike 119C",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "order": 5,
+        "name": "Moulding",
+        "date": "2026-10-20",
+        "location": "Curing Bay",
+        "operator": "Supervisor",
+        "notes": "Coconut shells",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "order": 6,
+        "name": "Drying",
+        "date": "2026-10-20",
+        "location": "Drying Bay",
+        "operator": "Supervisor",
+        "notes": "Air cure",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "order": 7,
+        "name": "Packaging",
+        "date": "2026-10-20",
+        "location": "Packaging Bay",
+        "operator": "Supervisor",
+        "notes": "Palm leaf packaging",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      }
+    ],
+    "timeline": [
+      {
+        "step": 1,
+        "title": "Neera Collection",
+        "date": "2026-10-20",
+        "location": "Tenkasi Grove",
+        "operator": "Field Lead",
+        "description": "Dawn tapping",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "step": 2,
+        "title": "Filtering",
+        "date": "2026-10-20",
+        "location": "Pan House",
+        "operator": "Field Lead",
+        "description": "Cotton mesh",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "step": 3,
+        "title": "Boiling",
+        "date": "2026-10-20",
+        "location": "Hearth #1",
+        "operator": "Cook",
+        "description": "Palm frond fuel",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "step": 4,
+        "title": "Concentration",
+        "date": "2026-10-20",
+        "location": "Hearth #1",
+        "operator": "Cook",
+        "description": "Strike 119C",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "step": 5,
+        "title": "Moulding",
+        "date": "2026-10-20",
+        "location": "Curing Bay",
+        "operator": "Supervisor",
+        "description": "Coconut shells",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "step": 6,
+        "title": "Drying",
+        "date": "2026-10-20",
+        "location": "Drying Bay",
+        "operator": "Supervisor",
+        "description": "Air cure",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "step": 7,
+        "title": "Packaging",
+        "date": "2026-10-20",
+        "location": "Packaging Bay",
+        "operator": "Supervisor",
+        "description": "Palm leaf packaging",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      }
+    ],
+    "document_refs": [],
+    "canonical_metadata": {
+      "schemaVersion": "1.0.0",
+      "batchId": "PJG-20261020-SEP496",
+      "producerAddress": "0x74de526b0cdfb86d682cb293d4006076a2fe6088",
+      "productionDate": "2026-10-20",
+      "treesUsed": [
+        "PLM-TK-012",
+        "PLM-TK-014",
+        "PLM-TK-018"
+      ],
+      "neeraLiters": 850,
+      "jaggeryKg": 115,
+      "productionNotes": "Live Sepolia verification test batch",
+      "stages": [
+        {
+          "order": 1,
+          "name": "Neera Collection",
+          "date": "2026-10-20",
+          "location": "Tenkasi Grove",
+          "operator": "Field Lead",
+          "notes": "Dawn tapping",
+          "parameters": {},
+          "stageType": "application_recorded",
+          "isVerified": false
+        },
+        {
+          "order": 2,
+          "name": "Filtering",
+          "date": "2026-10-20",
+          "location": "Pan House",
+          "operator": "Field Lead",
+          "notes": "Cotton mesh",
+          "parameters": {},
+          "stageType": "application_recorded",
+          "isVerified": false
+        },
+        {
+          "order": 3,
+          "name": "Boiling",
+          "date": "2026-10-20",
+          "location": "Hearth #1",
+          "operator": "Cook",
+          "notes": "Palm frond fuel",
+          "parameters": {},
+          "stageType": "application_recorded",
+          "isVerified": false
+        },
+        {
+          "order": 4,
+          "name": "Concentration",
+          "date": "2026-10-20",
+          "location": "Hearth #1",
+          "operator": "Cook",
+          "notes": "Strike 119C",
+          "parameters": {},
+          "stageType": "application_recorded",
+          "isVerified": false
+        },
+        {
+          "order": 5,
+          "name": "Moulding",
+          "date": "2026-10-20",
+          "location": "Curing Bay",
+          "operator": "Supervisor",
+          "notes": "Coconut shells",
+          "parameters": {},
+          "stageType": "application_recorded",
+          "isVerified": false
+        },
+        {
+          "order": 6,
+          "name": "Drying",
+          "date": "2026-10-20",
+          "location": "Drying Bay",
+          "operator": "Supervisor",
+          "notes": "Air cure",
+          "parameters": {},
+          "stageType": "application_recorded",
+          "isVerified": false
+        },
+        {
+          "order": 7,
+          "name": "Packaging",
+          "date": "2026-10-20",
+          "location": "Packaging Bay",
+          "operator": "Supervisor",
+          "notes": "Palm leaf packaging",
+          "parameters": {},
+          "stageType": "application_recorded",
+          "isVerified": false
+        }
+      ],
+      "documentRefs": []
+    },
+    "canonical_json": "{\"batchId\":\"PJG-20261020-SEP496\",\"documentRefs\":[],\"jaggeryKg\":115,\"neeraLiters\":850,\"producerAddress\":\"0x74de526b0cdfb86d682cb293d4006076a2fe6088\",\"productionDate\":\"2026-10-20\",\"productionNotes\":\"Live Sepolia verification test batch\",\"schemaVersion\":\"1.0.0\",\"stages\":[{\"date\":\"2026-10-20\",\"isVerified\":false,\"location\":\"Tenkasi Grove\",\"name\":\"Neera Collection\",\"notes\":\"Dawn tapping\",\"operator\":\"Field Lead\",\"order\":1,\"parameters\":{},\"stageType\":\"application_recorded\"},{\"date\":\"2026-10-20\",\"isVerified\":false,\"location\":\"Pan House\",\"name\":\"Filtering\",\"notes\":\"Cotton mesh\",\"operator\":\"Field Lead\",\"order\":2,\"parameters\":{},\"stageType\":\"application_recorded\"},{\"date\":\"2026-10-20\",\"isVerified\":false,\"location\":\"Hearth #1\",\"name\":\"Boiling\",\"notes\":\"Palm frond fuel\",\"operator\":\"Cook\",\"order\":3,\"parameters\":{},\"stageType\":\"application_recorded\"},{\"date\":\"2026-10-20\",\"isVerified\":false,\"location\":\"Hearth #1\",\"name\":\"Concentration\",\"notes\":\"Strike 119C\",\"operator\":\"Cook\",\"order\":4,\"parameters\":{},\"stageType\":\"application_recorded\"},{\"date\":\"2026-10-20\",\"isVerified\":false,\"location\":\"Curing Bay\",\"name\":\"Moulding\",\"notes\":\"Coconut shells\",\"operator\":\"Supervisor\",\"order\":5,\"parameters\":{},\"stageType\":\"application_recorded\"},{\"date\":\"2026-10-20\",\"isVerified\":false,\"location\":\"Drying Bay\",\"name\":\"Drying\",\"notes\":\"Air cure\",\"operator\":\"Supervisor\",\"order\":6,\"parameters\":{},\"stageType\":\"application_recorded\"},{\"date\":\"2026-10-20\",\"isVerified\":false,\"location\":\"Packaging Bay\",\"name\":\"Packaging\",\"notes\":\"Palm leaf packaging\",\"operator\":\"Supervisor\",\"order\":7,\"parameters\":{},\"stageType\":\"application_recorded\"}],\"treesUsed\":[\"PLM-TK-012\",\"PLM-TK-014\",\"PLM-TK-018\"]}",
+    "sha256_hash": "9cfe675522eaf4da2a15d9511bfebe02475ed5fa5e053ea391867586774709a5",
+    "sha256Hash": "9cfe675522eaf4da2a15d9511bfebe02475ed5fa5e053ea391867586774709a5",
+    "onchain_tx_hash": "0x274420fd3673d964ed0425a54c30e1b1f73ed3d36e6e1b1c6d13f8ab184d4ddf",
+    "onchainTxHash": "0x274420fd3673d964ed0425a54c30e1b1f73ed3d36e6e1b1c6d13f8ab184d4ddf",
+    "onchain_block_number": 11953001,
+    "onchainBlockNumber": 11953001,
+    "onchain_data_hash": "0x9cfe675522eaf4da2a15d9511bfebe02475ed5fa5e053ea391867586774709a5",
+    "is_onchain_anchored": true,
+    "is_anchored": true,
+    "status": "anchored",
+    "producer_address": "0x74de526b0cdfb86d682cb293d4006076a2fe6088",
+    "producerAddress": "0x74de526b0cdfb86d682cb293d4006076a2fe6088",
+    "producer": {
+      "wallet_address": "0x74de526b0cdfb86d682cb293d4006076a2fe6088",
+      "full_name": "PalmChain Verified Producer"
+    },
+    "farm_id": null,
+    "producer_id": null,
+    "updated_at": "2026-10-20T04:48:19.503Z"
+  },
+  {
+    "id": "batch-1792470871010-297",
+    "created_at": "2026-10-20T04:34:31.010Z",
+    "batch_number": "PJG-20261020-7934",
+    "batchId": "PJG-20261020-7934",
+    "schema_version": "1.0.0",
+    "production_date": "2026-10-20",
+    "harvest_date": "2026-10-20",
+    "processing_date": "2026-10-20",
+    "trees_used": [
+      "PLM-TK-001",
+      "PLM-TK-002"
+    ],
+    "sourceTreeIds": [
+      "PLM-TK-001",
+      "PLM-TK-002"
+    ],
+    "tree_count": 2,
+    "neera_liters": 500,
+    "sapVolumeLiters": 500,
+    "total_quantity_kg": 65,
+    "jaggery_kg": 65,
+    "outputKg": 65,
+    "production_notes": "",
+    "stages": [
+      {
+        "order": 1,
+        "name": "Neera Collection",
+        "date": "2026-10-20",
+        "location": "Palmyrah Orchard, Plot A",
+        "operator": "Field Supervisor",
+        "notes": "Fresh sap collected from healthy palms at dawn in lime-coated clay pots to inhibit fermentation.",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "order": 2,
+        "name": "Filtering",
+        "date": "2026-10-20",
+        "location": "Processing Pan Facility",
+        "operator": "Field Supervisor",
+        "notes": "Multi-layer microfiltration through organic unbleached cotton mesh with natural clarification agents.",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "order": 3,
+        "name": "Boiling",
+        "date": "2026-10-20",
+        "location": "Biomass Hearth Unit",
+        "operator": "Field Supervisor",
+        "notes": "Slow open-pan evaporation fueled exclusively by fallen palm fronds and husk biomass.",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "order": 4,
+        "name": "Concentration",
+        "date": "2026-10-20",
+        "location": "Finishing Pan",
+        "operator": "Field Supervisor",
+        "notes": "High-temperature evaporation until syrup reaches strike-point consistency (118°C–120°C).",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "order": 5,
+        "name": "Moulding",
+        "date": "2026-10-20",
+        "location": "Moulding & Curing Room",
+        "operator": "Field Supervisor",
+        "notes": "Pouring thick amber jaggery syrup into halved coconut shell or natural wooden moulds.",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "order": 6,
+        "name": "Drying",
+        "date": "2026-10-20",
+        "location": "Aerated Drying Racks",
+        "operator": "Field Supervisor",
+        "notes": "Cooling and natural moisture equilibrium under controlled dust-free airflow.",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "order": 7,
+        "name": "Packaging",
+        "date": "2026-10-20",
+        "location": "Cooperative Packing Station",
+        "operator": "Field Supervisor",
+        "notes": "Eco-friendly palm leaf / unbleached paper wrap sealed with tamper-evident batch QR code passport.",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      }
+    ],
+    "timeline": [
+      {
+        "step": 1,
+        "title": "Neera Collection",
+        "date": "2026-10-20",
+        "location": "Palmyrah Orchard, Plot A",
+        "operator": "Field Supervisor",
+        "description": "Fresh sap collected from healthy palms at dawn in lime-coated clay pots to inhibit fermentation.",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "step": 2,
+        "title": "Filtering",
+        "date": "2026-10-20",
+        "location": "Processing Pan Facility",
+        "operator": "Field Supervisor",
+        "description": "Multi-layer microfiltration through organic unbleached cotton mesh with natural clarification agents.",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "step": 3,
+        "title": "Boiling",
+        "date": "2026-10-20",
+        "location": "Biomass Hearth Unit",
+        "operator": "Field Supervisor",
+        "description": "Slow open-pan evaporation fueled exclusively by fallen palm fronds and husk biomass.",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "step": 4,
+        "title": "Concentration",
+        "date": "2026-10-20",
+        "location": "Finishing Pan",
+        "operator": "Field Supervisor",
+        "description": "High-temperature evaporation until syrup reaches strike-point consistency (118°C–120°C).",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "step": 5,
+        "title": "Moulding",
+        "date": "2026-10-20",
+        "location": "Moulding & Curing Room",
+        "operator": "Field Supervisor",
+        "description": "Pouring thick amber jaggery syrup into halved coconut shell or natural wooden moulds.",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "step": 6,
+        "title": "Drying",
+        "date": "2026-10-20",
+        "location": "Aerated Drying Racks",
+        "operator": "Field Supervisor",
+        "description": "Cooling and natural moisture equilibrium under controlled dust-free airflow.",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      },
+      {
+        "step": 7,
+        "title": "Packaging",
+        "date": "2026-10-20",
+        "location": "Cooperative Packing Station",
+        "operator": "Field Supervisor",
+        "description": "Eco-friendly palm leaf / unbleached paper wrap sealed with tamper-evident batch QR code passport.",
+        "parameters": {},
+        "stageType": "application_recorded",
+        "isVerified": false
+      }
+    ],
+    "document_refs": [],
+    "canonical_metadata": {
+      "schemaVersion": "1.0.0",
+      "batchId": "PJG-20261020-7934",
+      "producerAddress": "",
+      "productionDate": "2026-10-20",
+      "treesUsed": [
+        "PLM-TK-001",
+        "PLM-TK-002"
+      ],
+      "neeraLiters": 500,
+      "jaggeryKg": 65,
+      "productionNotes": "",
+      "stages": [
+        {
+          "order": 1,
+          "name": "Neera Collection",
+          "date": "2026-10-20",
+          "location": "Palmyrah Orchard, Plot A",
+          "operator": "Field Supervisor",
+          "notes": "Fresh sap collected from healthy palms at dawn in lime-coated clay pots to inhibit fermentation.",
+          "parameters": {},
+          "stageType": "application_recorded",
+          "isVerified": false
+        },
+        {
+          "order": 2,
+          "name": "Filtering",
+          "date": "2026-10-20",
+          "location": "Processing Pan Facility",
+          "operator": "Field Supervisor",
+          "notes": "Multi-layer microfiltration through organic unbleached cotton mesh with natural clarification agents.",
+          "parameters": {},
+          "stageType": "application_recorded",
+          "isVerified": false
+        },
+        {
+          "order": 3,
+          "name": "Boiling",
+          "date": "2026-10-20",
+          "location": "Biomass Hearth Unit",
+          "operator": "Field Supervisor",
+          "notes": "Slow open-pan evaporation fueled exclusively by fallen palm fronds and husk biomass.",
+          "parameters": {},
+          "stageType": "application_recorded",
+          "isVerified": false
+        },
+        {
+          "order": 4,
+          "name": "Concentration",
+          "date": "2026-10-20",
+          "location": "Finishing Pan",
+          "operator": "Field Supervisor",
+          "notes": "High-temperature evaporation until syrup reaches strike-point consistency (118°C–120°C).",
+          "parameters": {},
+          "stageType": "application_recorded",
+          "isVerified": false
+        },
+        {
+          "order": 5,
+          "name": "Moulding",
+          "date": "2026-10-20",
+          "location": "Moulding & Curing Room",
+          "operator": "Field Supervisor",
+          "notes": "Pouring thick amber jaggery syrup into halved coconut shell or natural wooden moulds.",
+          "parameters": {},
+          "stageType": "application_recorded",
+          "isVerified": false
+        },
+        {
+          "order": 6,
+          "name": "Drying",
+          "date": "2026-10-20",
+          "location": "Aerated Drying Racks",
+          "operator": "Field Supervisor",
+          "notes": "Cooling and natural moisture equilibrium under controlled dust-free airflow.",
+          "parameters": {},
+          "stageType": "application_recorded",
+          "isVerified": false
+        },
+        {
+          "order": 7,
+          "name": "Packaging",
+          "date": "2026-10-20",
+          "location": "Cooperative Packing Station",
+          "operator": "Field Supervisor",
+          "notes": "Eco-friendly palm leaf / unbleached paper wrap sealed with tamper-evident batch QR code passport.",
+          "parameters": {},
+          "stageType": "application_recorded",
+          "isVerified": false
+        }
+      ],
+      "documentRefs": []
+    },
+    "canonical_json": "{\"batchId\":\"PJG-20261020-7934\",\"documentRefs\":[],\"jaggeryKg\":65,\"neeraLiters\":500,\"producerAddress\":\"\",\"productionDate\":\"2026-10-20\",\"productionNotes\":\"\",\"schemaVersion\":\"1.0.0\",\"stages\":[{\"date\":\"2026-10-20\",\"isVerified\":false,\"location\":\"Palmyrah Orchard, Plot A\",\"name\":\"Neera Collection\",\"notes\":\"Fresh sap collected from healthy palms at dawn in lime-coated clay pots to inhibit fermentation.\",\"operator\":\"Field Supervisor\",\"order\":1,\"parameters\":{},\"stageType\":\"application_recorded\"},{\"date\":\"2026-10-20\",\"isVerified\":false,\"location\":\"Processing Pan Facility\",\"name\":\"Filtering\",\"notes\":\"Multi-layer microfiltration through organic unbleached cotton mesh with natural clarification agents.\",\"operator\":\"Field Supervisor\",\"order\":2,\"parameters\":{},\"stageType\":\"application_recorded\"},{\"date\":\"2026-10-20\",\"isVerified\":false,\"location\":\"Biomass Hearth Unit\",\"name\":\"Boiling\",\"notes\":\"Slow open-pan evaporation fueled exclusively by fallen palm fronds and husk biomass.\",\"operator\":\"Field Supervisor\",\"order\":3,\"parameters\":{},\"stageType\":\"application_recorded\"},{\"date\":\"2026-10-20\",\"isVerified\":false,\"location\":\"Finishing Pan\",\"name\":\"Concentration\",\"notes\":\"High-temperature evaporation until syrup reaches strike-point consistency (118°C–120°C).\",\"operator\":\"Field Supervisor\",\"order\":4,\"parameters\":{},\"stageType\":\"application_recorded\"},{\"date\":\"2026-10-20\",\"isVerified\":false,\"location\":\"Moulding & Curing Room\",\"name\":\"Moulding\",\"notes\":\"Pouring thick amber jaggery syrup into halved coconut shell or natural wooden moulds.\",\"operator\":\"Field Supervisor\",\"order\":5,\"parameters\":{},\"stageType\":\"application_recorded\"},{\"date\":\"2026-10-20\",\"isVerified\":false,\"location\":\"Aerated Drying Racks\",\"name\":\"Drying\",\"notes\":\"Cooling and natural moisture equilibrium under controlled dust-free airflow.\",\"operator\":\"Field Supervisor\",\"order\":6,\"parameters\":{},\"stageType\":\"application_recorded\"},{\"date\":\"2026-10-20\",\"isVerified\":false,\"location\":\"Cooperative Packing Station\",\"name\":\"Packaging\",\"notes\":\"Eco-friendly palm leaf / unbleached paper wrap sealed with tamper-evident batch QR code passport.\",\"operator\":\"Field Supervisor\",\"order\":7,\"parameters\":{},\"stageType\":\"application_recorded\"}],\"treesUsed\":[\"PLM-TK-001\",\"PLM-TK-002\"]}",
+    "sha256_hash": "d9dc826e5ebffc0dd980a9293540d41fa76bc3bfadafc4ddac5f5a7d3c8ea6db",
+    "sha256Hash": "d9dc826e5ebffc0dd980a9293540d41fa76bc3bfadafc4ddac5f5a7d3c8ea6db",
+    "onchain_tx_hash": null,
+    "onchainTxHash": null,
+    "onchain_block_number": null,
+    "onchainBlockNumber": null,
+    "onchain_data_hash": "0xd9dc826e5ebffc0dd980a9293540d41fa76bc3bfadafc4ddac5f5a7d3c8ea6db",
+    "is_onchain_anchored": false,
+    "is_anchored": false,
+    "status": "draft",
+    "producer_address": "",
+    "producerAddress": "",
+    "producer": {
+      "wallet_address": "",
+      "full_name": "PalmChain Verified Producer"
+    },
+    "farm_id": null,
+    "producer_id": null,
+    "updated_at": "2026-10-20T04:34:31.011Z"
+  },
+  {
+    "id": "b1111111-1111-1111-1111-111111111111",
+    "batch_number": "PJG-2026-001",
+    "status": "certified",
+    "product_title": "Heritage Solid Karupatti Block (Coconut Shell Molded)",
+    "jaggery_form": "solid_block",
+    "total_quantity_kg": 120,
+    "neera_volume_liters": 850,
+    "harvest_date": "2026-03-10",
+    "processing_date": "2026-03-11",
+    "packaging_date": "2026-03-12",
+    "sha256_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "onchain_tx_hash": "0x4f89d31190bc1f37ac68be9031efb7189d984189280d0d6118b871c998782a1e",
+    "is_anchored": true,
+    "producer": {
+      "id": "p1111111-1111-1111-1111-111111111111",
+      "full_name": "Murugan Natural Palmyrah Cooperative",
+      "organization_name": "Murugan Cooperative Society",
+      "wallet_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "phone": "+91 94421 88201"
+    },
+    "farm": {
+      "id": "f1111111-1111-1111-1111-111111111111",
+      "farm_name": "Tenkasi Heritage Palmyrah Grove (Plot #4)",
+      "region": "Tenkasi",
+      "state": "Tamil Nadu",
+      "latitude": 8.9591,
+      "longitude": 77.315,
+      "organic_certified": true,
+      "palm_tree_count": 420
+    },
+    "batch_trace_logs": [
+      {
+        "id": "t1",
+        "stage_name": "Dawn Neera Sap Tapping",
+        "stage_order": 1,
+        "location_name": "Tenkasi Palmyrah Grove, Plot #4",
+        "stage_timestamp": "2026-03-10T05:30:00Z",
+        "notes": "Fresh sap tapped from healthy 30+ year old palms into sterile earthen pots lined with natural quicklime."
+      },
+      {
+        "id": "t2",
+        "stage_name": "Coarse Mesh Filtration & Clarification",
+        "stage_order": 2,
+        "location_name": "Cooperative Pan Unit #2",
+        "stage_timestamp": "2026-03-10T08:45:00Z",
+        "notes": "Cold-clarified through quadruple-layer organic unbleached cotton mesh with natural okra mucilage."
+      },
+      {
+        "id": "t3",
+        "stage_name": "Heated Open-Pan Biomass Evaporation",
+        "stage_order": 3,
+        "location_name": "Traditional Hearth #1",
+        "stage_timestamp": "2026-03-10T12:30:00Z",
+        "notes": "Concentrated in shallow iron cauldrons fueled exclusively with dry fallen palm fronds until strike point 118.5°C."
+      },
+      {
+        "id": "t4",
+        "stage_name": "Cooling & Coconut Shell Molding",
+        "stage_order": 4,
+        "location_name": "Shaded Curing Veranda",
+        "stage_timestamp": "2026-03-10T16:30:00Z",
+        "notes": "Hand-ladled into halved coconut shell cups to cure naturally into traditional Karupatti blocks."
+      },
+      {
+        "id": "t5",
+        "stage_name": "NABL Certified Lab Quality Assay",
+        "stage_order": 5,
+        "location_name": "Southern Agro-Quality Testing Agency",
+        "stage_timestamp": "2026-03-12T10:00:00Z",
+        "notes": "Certified cane sugar adulteration index: 0.0%. Heavy metals: Below Detection Limits. 100% pure palm jaggery."
+      }
+    ],
+    "canonical_metadata": {
+      "batch_id": "PJG-2026-001",
+      "producer_address": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "neera_liters": 850,
+      "jaggery_kg": 120,
+      "harvest_date": "2026-03-10"
+    },
+    "created_at": "2026-03-10T05:30:00Z"
+  },
+  {
+    "id": "b2222222-2222-2222-2222-222222222222",
+    "batch_number": "PJG-2026-002",
+    "status": "certified",
+    "product_title": "Organic Granulated Palmyrah Sugar",
+    "jaggery_form": "granulated_powder",
+    "total_quantity_kg": 280,
+    "neera_volume_liters": 1950,
+    "harvest_date": "2026-03-14",
+    "processing_date": "2026-03-15",
+    "packaging_date": "2026-03-16",
+    "sha256_hash": "c893b12398fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852a441",
+    "onchain_tx_hash": "0x3a19d31190bc1f37ac68be9031efb7189d984189280d0d6118b871c998782f9c",
+    "is_anchored": true,
+    "producer": {
+      "id": "p2222222-2222-2222-2222-222222222222",
+      "full_name": "Tuticorin Coastal Farmers FPO",
+      "organization_name": "Tuticorin Agro Guild",
+      "wallet_address": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+      "phone": "+91 98412 45678"
+    },
+    "farm": {
+      "id": "f2222222-2222-2222-2222-222222222222",
+      "farm_name": "Tuticorin Coastal Palmyrah Grove",
+      "region": "Tuticorin",
+      "state": "Tamil Nadu",
+      "latitude": 8.7642,
+      "longitude": 78.1348,
+      "organic_certified": true,
+      "palm_tree_count": 650
+    },
+    "canonical_metadata": {
+      "batch_id": "PJG-2026-002",
+      "producer_address": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+      "neera_liters": 1950,
+      "jaggery_kg": 280,
+      "harvest_date": "2026-03-14"
+    },
+    "created_at": "2026-03-14T06:00:00Z"
+  }
+]

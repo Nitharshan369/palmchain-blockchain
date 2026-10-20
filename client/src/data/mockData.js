@@ -689,3 +689,4 @@ export const mockAuditLogs = [
   { id: 'log-4', timestamp: '2026-03-16 09:20:45', event: 'Marketplace Direct Order', entity: 'Customer Anand R.', details: 'Order ORD-8921 placed for 10kg Karupatti' },
   { id: 'log-5', timestamp: '2026-03-15 15:00:10', event: 'Smart Contract Ownership Check', entity: 'System Admin', details: 'Admin wallet 0xf39F...2266 verified on Sepolia' },
 ];
+

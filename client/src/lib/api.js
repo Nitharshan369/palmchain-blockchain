@@ -16,7 +16,10 @@ async function request(method, path, body) {
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    throw new Error(data.error || `HTTP ${res.status}`);
+    const errorObj = new Error(data.error || `HTTP ${res.status}`);
+    errorObj.data = data;
+    errorObj.status = res.status;
+    throw errorObj;
   }
   return data;
 }
@@ -32,6 +35,7 @@ export const api = {
 export const profilesApi = {
   upsert: (profile) => api.post('/profiles', profile),
   getByWallet: (wallet) => api.get(`/profiles/wallet/${wallet}`),
+  verifyProducerOnchain: (wallet_address) => api.post('/profiles/verify-producer-onchain', { wallet_address }),
 };
 
 // ─── Batches ─────────────────────────────────────────────────────────────────
@@ -42,6 +46,7 @@ export const batchesApi = {
   },
   getById: (id) => api.get(`/batches/${id}`),
   getByBatchNumber: (num) => api.get(`/batches/number/${num}`),
+  generateCode: () => api.get('/batches/generate-code'),
   create: (batch) => api.post('/batches', batch),
   anchorToChain: (id, txData) => api.post(`/batches/${id}/anchor`, txData),
 };
