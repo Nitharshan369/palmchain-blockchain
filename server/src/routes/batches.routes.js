@@ -325,16 +325,40 @@ router.post('/', async (req, res) => {
 
     if (supabase) {
       try {
+        const { data: producerProfile, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, wallet_address, role, is_active')
+          .ilike('wallet_address', canonicalPayload.producerAddress)
+          .maybeSingle();
+        if (profileError) throw profileError;
+        if (!producerProfile || producerProfile.role !== 'producer' || !producerProfile.is_active) {
+          throw new Error('An active producer profile must be synced before saving this batch');
+        }
+        if (producer_id && producer_id !== producerProfile.id) {
+          return res.status(403).json({ error: 'Batch producer does not match the connected wallet profile' });
+        }
+
+        let farmQuery = supabase.from('farms').select('id').eq('producer_id', producerProfile.id);
+        if (farm_id) farmQuery = farmQuery.eq('id', farm_id);
+        const { data: producerFarm, error: farmError } = await farmQuery
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (farmError) throw farmError;
+        if (!producerFarm) throw new Error('Create a farm profile before saving a production batch');
+
         const { data: supaData, error: supaErr } = await supabase
           .from('batches')
           .insert({
             batch_number: batchCode,
+            farm_id: producerFarm.id,
+            producer_id: producerProfile.id,
             harvest_date: prodDate,
             processing_date: prodDate,
             total_quantity_kg: jaggery,
             available_stock_kg: jaggery,
             canonical_metadata: canonicalPayload,
-            sha256_hash: sha256_hash,
+            sha256_hash,
             onchain_tx_hash: onchain_tx_hash || null,
             onchain_block_number: onchain_block_number || null,
             is_onchain_anchored: isAnchored,
@@ -344,12 +368,27 @@ router.post('/', async (req, res) => {
           .select()
           .single();
 
-        if (supaErr) {
-          supabaseError = supaErr.message;
-          console.warn('[batches] Supabase insert warning (fallback active):', supaErr.message);
-        } else if (supaData) {
+        if (supaErr) throw supaErr;
+        if (supaData) {
           savedInSupabase = true;
           batchRecord.id = supaData.id;
+          batchRecord.producer_id = producerProfile.id;
+          batchRecord.farm_id = producerFarm.id;
+
+          const traceLogs = canonicalPayload.stages.map((stage) => ({
+            batch_id: supaData.id,
+            stage_name: stage.name,
+            stage_order: stage.order,
+            location_name: stage.location,
+            recorded_by: producerProfile.id,
+            stage_timestamp: new Date(stage.date || prodDate).toISOString(),
+            metadata: stage.parameters || {},
+            notes: stage.notes,
+          }));
+          const { error: traceError } = await supabase.from('batch_trace_logs').insert(traceLogs);
+          if (traceError) {
+            supabaseError = `Batch saved but production timeline could not be saved: ${traceError.message}`;
+          }
         }
       } catch (dbErr) {
         supabaseError = dbErr.message;
@@ -365,7 +404,7 @@ router.post('/', async (req, res) => {
       storage: {
         supabase: savedInSupabase,
         localStore: true,
-        supabaseNotice: supabaseError ? `Supabase table not ready: ${supabaseError}` : null,
+        supabaseNotice: supabaseError ? `Supabase persistence failed: ${supabaseError}` : null,
       },
     });
   } catch (err) {

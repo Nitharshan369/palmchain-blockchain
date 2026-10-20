@@ -44,7 +44,7 @@ import {
   canonicalJsonStringify, 
   generateSHA256Hash 
 } from '../../lib/canonicalHash';
-import { batchesApi, profilesApi } from '../../lib/api';
+import { batchesApi } from '../../lib/api';
 
 export default function CreateBatch() {
   const {
@@ -53,7 +53,6 @@ export default function CreateBatch() {
     isConnected,
     getSigner,
     onChainProducer,
-    refreshProducerStatus,
   } = useWallet();
 
   // ─── Production Form State ──────────────────────────────────────────────────
@@ -102,8 +101,6 @@ export default function CreateBatch() {
   const [blockNumber, setBlockNumber] = useState(null);
   const [dbSyncError, setDbSyncError] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const [adminVerifying, setAdminVerifying] = useState(false);
-  const [adminVerifyMsg, setAdminVerifyMsg] = useState('');
 
   const isConfigured = isBatchRegistryConfigured();
   const isVerifiedProducer = onChainProducer.status === 2;
@@ -263,22 +260,6 @@ export default function CreateBatch() {
     setConfirmAnchorOpen(true);
   };
 
-  // Admin Quick-Verify Helper for connected wallet on Sepolia
-  const handleAdminVerifyWallet = async () => {
-    if (!address) return;
-    setAdminVerifying(true);
-    setAdminVerifyMsg('');
-    try {
-      const res = await profilesApi.verifyProducerOnchain(address);
-      setAdminVerifyMsg(res.message || 'Producer verified on Sepolia ProducerRegistry!');
-      await refreshProducerStatus(address);
-    } catch (err) {
-      setAdminVerifyMsg(`Verification failed: ${err.message}`);
-    } finally {
-      setAdminVerifying(false);
-    }
-  };
-
   // ─── Execute Batch Creation Flow ──────────────────────────────────────────
   const executeBatchCreation = async () => {
     setConfirmAnchorOpen(false);
@@ -302,7 +283,7 @@ export default function CreateBatch() {
 
     if (!isVerifiedProducer) {
       setErrorMessage(
-        'Only verified producers can anchor batches to BatchRegistry.sol. Click "Admin Quick-Verify" below to grant testnet producer rights.'
+        'Only producers verified by the ProducerRegistry administrator can anchor batches to BatchRegistry.sol.'
       );
       return;
     }
@@ -356,7 +337,10 @@ export default function CreateBatch() {
           onchain_data_hash: dataHashBytes32,
         };
 
-        await batchesApi.create(payloadToSave);
+        const saveResult = await batchesApi.create(payloadToSave);
+        if (!saveResult?.storage?.supabase) {
+          throw new Error(saveResult?.storage?.supabaseNotice || 'Batch data was saved locally but not persisted to Supabase.');
+        }
         setFlowState('success');
       } catch (dbErr) {
         console.error('Database save error:', dbErr);
@@ -404,6 +388,9 @@ export default function CreateBatch() {
       };
 
       const dbRes = await batchesApi.create(payloadToSave);
+      if (!dbRes?.storage?.supabase) {
+        throw new Error(dbRes?.storage?.supabaseNotice || 'Batch data was saved locally but not persisted to Supabase.');
+      }
       setSavedBatchResult(dbRes.batch);
       setFlowState('success');
     } catch (err) {
@@ -480,27 +467,14 @@ export default function CreateBatch() {
             <code>BatchRegistry.createBatch()</code> enforces access control: only verified producers registered on <code>ProducerRegistry.sol</code> may anchor harvest batches.
           </p>
           <div className="flex flex-wrap items-center gap-3 pt-1">
-            <button
-              onClick={handleAdminVerifyWallet}
-              disabled={adminVerifying}
-              className="px-3.5 py-2 rounded-xl bg-forest-800 hover:bg-forest-900 text-white font-bold transition-all shadow-xs flex items-center space-x-1.5 disabled:opacity-50"
-            >
-              {adminVerifying ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5 text-gold-300" />}
-              <span>{adminVerifying ? 'Verifying on Sepolia...' : 'Admin Quick-Verify Wallet (Testnet)'}</span>
-            </button>
             <Link
               to="/producer/register"
               className="text-forest-900 hover:text-forest-950 font-bold underline flex items-center space-x-1"
             >
-              <span>Or Register via Form</span>
+              <span>Register via Form, then await administrator verification</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
-          {adminVerifyMsg && (
-            <p className="font-mono text-[11px] font-bold text-forest-800 bg-white/70 p-2 rounded-lg border border-forest-200">
-              {adminVerifyMsg}
-            </p>
-          )}
         </div>
       )}
 

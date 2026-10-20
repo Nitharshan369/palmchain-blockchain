@@ -125,7 +125,15 @@ cp contracts/.env.example contracts/.env
 
 1. Open your Supabase project SQL Editor.
 2. Run `database/migrations/001_initial_schema.sql`.
-3. (Optional) Run `database/seed/001_seed_dev_data.sql` to populate sample records.
+3. Run `database/migrations/002_rls_policies.sql`.
+4. Run `database/migrations/004_marketplace.sql`.
+5. (Optional) Run `database/seed/001_seed_dev_data.sql` to populate sample records.
+
+The marketplace API publishes only fresh-signature-authorized producer listings backed by a
+hash-matched Sepolia batch in `Packaged` or `Listed` status. Producer profile and farm writes
+are routed through the signed API, and direct anonymous writes are disabled by RLS. Supabase
+tracks product inventory and unpaid order reservations transactionally. Marketplace browsing
+and orders do not submit blockchain transactions or collect payment.
 
 ### 4. Compile & Test Smart Contracts
 

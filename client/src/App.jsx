@@ -18,6 +18,7 @@ import TreesManagement from './pages/producer/TreesManagement';
 import BatchesManagement from './pages/producer/BatchesManagement';
 import CreateBatch from './pages/producer/CreateBatch';
 import SalesManagement from './pages/producer/SalesManagement';
+import ProducerListings from './pages/producer/ProducerListings';
 import ProducerAnalytics from './pages/producer/ProducerAnalytics';
 import ProducerRegistration from './pages/producer/ProducerRegistration';
 
@@ -53,6 +54,7 @@ export default function App() {
           <Route path="batches" element={<BatchesManagement />} />
           <Route path="create-batch" element={<CreateBatch />} />
           <Route path="sales" element={<SalesManagement />} />
+          <Route path="listings" element={<ProducerListings />} />
           <Route path="analytics" element={<ProducerAnalytics />} />
           <Route path="register" element={<ProducerRegistration />} />
         </Route>

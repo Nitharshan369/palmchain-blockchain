@@ -6,6 +6,7 @@ import {
   Package, 
   PlusCircle, 
   ShoppingBag, 
+  Store,
   BarChart3, 
   Menu, 
   X, 
@@ -29,6 +30,7 @@ export default function ProducerLayout() {
     { label: 'Production Batches', path: '/producer/batches', icon: Package },
     { label: 'Create & Anchor Batch', path: '/producer/create-batch', icon: PlusCircle },
     { label: 'Orders & Sales', path: '/producer/sales', icon: ShoppingBag },
+    { label: 'Product Listings', path: '/producer/listings', icon: Store },
     { label: 'Yield Analytics', path: '/producer/analytics', icon: BarChart3 },
     { label: 'Register on Chain', path: '/producer/register', icon: UserCheck },
   ];

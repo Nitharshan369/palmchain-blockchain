@@ -19,7 +19,7 @@ import {
   getProducerRegistryWithSigner, 
   CONTRACT_ADDRESSES 
 } from '../../contracts';
-import { supabase } from '../../lib/supabase';
+import { profilesApi } from '../../lib/api';
 
 export default function ProducerRegistration() {
   const navigate = useNavigate();
@@ -49,8 +49,33 @@ export default function ProducerRegistration() {
   const [txHash, setTxHash] = useState('');
   const [blockNumber, setBlockNumber] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isSyncingProfile, setIsSyncingProfile] = useState(false);
 
   const isConfigured = isProducerRegistryConfigured();
+
+  const syncProducerProfile = async () => {
+    if (!address) throw new Error('Connect the producer wallet before syncing the profile.');
+    const businessName = formData.businessName.trim() || onChainProducer.name || 'PalmChain Producer';
+    const signer = await getSigner();
+    await profilesApi.syncProducer({
+      full_name: businessName,
+      organization_name: businessName,
+      location: formData.location,
+    }, signer);
+    await syncProfile(address);
+  };
+
+  const retryProfileSync = async () => {
+    setIsSyncingProfile(true);
+    setErrorMessage('');
+    try {
+      await syncProducerProfile();
+    } catch (error) {
+      setErrorMessage(`Producer profile setup failed: ${error.message}`);
+    } finally {
+      setIsSyncingProfile(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -99,17 +124,9 @@ export default function ProducerRegistration() {
 
       // 5. Sync profile in Supabase database
       try {
-        await supabase.from('profiles').upsert({
-          wallet_address: address.toLowerCase(),
-          display_name: formData.businessName.trim(),
-          role: 'producer',
-          verification_status: 'pending',
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'wallet_address' });
-
-        await syncProfile(address);
+        await syncProducerProfile();
       } catch (dbErr) {
-        console.warn('[Registration] Off-chain profile sync warning:', dbErr.message);
+        setErrorMessage(`On-chain registration succeeded, but producer profile setup failed: ${dbErr.message}`);
       }
     } catch (err) {
       console.error('[Registration] Transaction error:', err);
@@ -235,6 +252,14 @@ export default function ProducerRegistration() {
             Your wallet (<code>{shortAddress}</code>) is registered on <code>ProducerRegistry.sol</code> as <strong>"{onChainProducer.name}"</strong>.
             Platform administrators must verify your credentials before you can anchor production batches.
           </p>
+          <button
+            type="button"
+            onClick={retryProfileSync}
+            disabled={isSyncingProfile}
+            className="px-3.5 py-2 rounded-xl bg-forest-800 hover:bg-forest-900 text-white font-bold disabled:opacity-50"
+          >
+            {isSyncingProfile ? 'Syncing producer profile…' : 'Sync producer profile & farm'}
+          </button>
           <div className="pt-2">
             <Link
               to="/producer/dashboard"
@@ -256,6 +281,14 @@ export default function ProducerRegistration() {
           <p className="leading-relaxed">
             Your wallet is verified on-chain. You have full privileges to create and anchor production batches on <code>BatchRegistry.sol</code>.
           </p>
+          <button
+            type="button"
+            onClick={retryProfileSync}
+            disabled={isSyncingProfile}
+            className="px-3.5 py-2 rounded-xl bg-forest-800 hover:bg-forest-900 text-white font-bold disabled:opacity-50"
+          >
+            {isSyncingProfile ? 'Syncing producer profile…' : 'Sync producer profile & farm'}
+          </button>
           <div className="pt-2">
             <Link
               to="/producer/create-batch"
@@ -265,6 +298,16 @@ export default function ProducerRegistration() {
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
+        </div>
+      )}
+
+      {errorMessage && (
+        <div role="alert" className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-900">
+          <div className="flex items-center space-x-1.5 font-bold mb-1">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>Registration Notice</span>
+          </div>
+          <p className="text-[11px] leading-relaxed text-stone-700">{errorMessage}</p>
         </div>
       )}
 
@@ -381,7 +424,7 @@ export default function ProducerRegistration() {
             </div>
           )}
 
-          {(txState === 'rejected' || txState === 'failed' || errorMessage) && (
+          {(txState === 'rejected' || txState === 'failed') && (
             <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-900 space-y-1">
               <div className="flex items-center space-x-1.5 font-bold">
                 <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />

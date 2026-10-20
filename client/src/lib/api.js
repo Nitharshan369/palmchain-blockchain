@@ -5,10 +5,10 @@
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-async function request(method, path, body) {
+async function request(method, path, body, extraHeaders = {}) {
   const options = {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
   };
   if (body) options.body = JSON.stringify(body);
 
@@ -28,14 +28,15 @@ export const api = {
   get: (path) => request('GET', path),
   post: (path, body) => request('POST', path, body),
   put: (path, body) => request('PUT', path, body),
+  patch: (path, body) => request('PATCH', path, body),
   delete: (path) => request('DELETE', path),
 };
 
 // ─── Profiles ────────────────────────────────────────────────────────────────
 export const profilesApi = {
-  upsert: (profile) => api.post('/profiles', profile),
+  upsert: (profile, signer) => producerRequest('POST', '/', profile, signer, '/profiles'),
+  syncProducer: (profile, signer) => producerRequest('POST', '/producer', profile, signer, '/profiles'),
   getByWallet: (wallet) => api.get(`/profiles/wallet/${wallet}`),
-  verifyProducerOnchain: (wallet_address) => api.post('/profiles/verify-producer-onchain', { wallet_address }),
 };
 
 // ─── Batches ─────────────────────────────────────────────────────────────────
@@ -52,13 +53,41 @@ export const batchesApi = {
 };
 
 // ─── Products ────────────────────────────────────────────────────────────────
+async function producerRequest(method, path, body, signer, resource = '/products') {
+  if (!signer) throw new Error('Connect the producer wallet to sign this request.');
+  const timestamp = Date.now();
+  const nonce = crypto.randomUUID();
+  const signedBody = body || {};
+  const signature = await signer.signMessage(JSON.stringify({
+    application: 'PalmChain Marketplace',
+    version: 1,
+    method,
+    path,
+    timestamp,
+    nonce,
+    body: signedBody,
+  }));
+  return request(method, `${resource}${path}`, body, {
+    'X-PalmChain-Wallet': await signer.getAddress(),
+    'X-PalmChain-Timestamp': String(timestamp),
+    'X-PalmChain-Nonce': nonce,
+    'X-PalmChain-Signature': signature,
+  });
+}
+
 export const productsApi = {
   list: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
     return api.get(`/products${qs ? '?' + qs : ''}`);
   },
   getById: (id) => api.get(`/products/${id}`),
-  create: (product) => api.post('/products', product),
+  manage: (signer) => producerRequest('GET', '/manage', undefined, signer),
+  create: (product, signer) => producerRequest('POST', '/manage', product, signer),
+  update: (id, product, signer) => producerRequest('PATCH', `/manage/${id}`, product, signer),
+  purchase: (id, quantity_kg, request_key = crypto.randomUUID()) => api.post(`/products/${id}/purchase`, {
+    quantity_kg,
+    request_key,
+  }),
 };
 
 // ─── Verification ─────────────────────────────────────────────────────────────

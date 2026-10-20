@@ -14,6 +14,7 @@
     "build:client": "npm run build --prefix client",
     "compile:contracts": "npm run compile --prefix contracts",
     "test:contracts": "npm run test --prefix contracts",
+    "test:marketplace": "npm run test --prefix server && npm run test --prefix client",
     "check:contracts:sepolia": "npm run check:sepolia --prefix contracts",
     "deploy:contracts:sepolia": "npm run deploy:sepolia --prefix contracts",
     "verify:contracts:sepolia": "npm run verify:sepolia --prefix contracts",

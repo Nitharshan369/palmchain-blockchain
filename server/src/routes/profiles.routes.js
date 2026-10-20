@@ -1,16 +1,18 @@
 import express from 'express';
 import { ethers } from 'ethers';
 import { supabase } from '../config/supabase.js';
+import { verifyWalletSignature } from '../middleware/verifyWalletSignature.js';
 
 const router = express.Router();
 
-const SEPOLIA_RPC_URL = process.env.SEPOLIA_RPC_URL || 'https://eth-sepolia.g.alchemy.com/v2/alch_v5uaUe7qMsm8BLhpm2XGE';
+const SEPOLIA_RPC_URL = process.env.SEPOLIA_RPC_URL || 'https://rpc.sepolia.org';
 const PRODUCER_REGISTRY_ADDRESS =
   process.env.PALMCHAIN_PRODUCER_REGISTRY_ADDRESS ||
   process.env.VITE_PRODUCER_REGISTRY_ADDRESS ||
   '0xD4B4BF61a6e70bd4e9B44E3941523c57Ed27d00D';
-
-const ADMIN_PRIVATE_KEY = process.env.SEPOLIA_PRIVATE_KEY || 'fe26e8901a9134be6a309eaafe72a0865f6c080eb6c6a8fe9c16c535135ae57c';
+const PRODUCER_REGISTRY_ABI = [
+  'function getProducer(address producer) view returns (tuple(address wallet, string name, uint8 status, uint256 registeredAt, uint256 verifiedAt))',
+];
 
 // In-memory fallback profile store
 const localProfiles = new Map();
@@ -60,112 +62,121 @@ router.get('/wallet/:address', async (req, res) => {
  * Create or update a user profile (upsert by wallet_address).
  */
 router.post('/', async (req, res) => {
-  const { wallet_address, full_name, role, email, phone, organization_name } = req.body;
+  try {
+    const wallet = await verifyWalletSignature(req);
+    if (!req.body.wallet_address || !ethers.isAddress(req.body.wallet_address)
+      || ethers.getAddress(req.body.wallet_address) !== wallet) {
+      return res.status(403).json({ error: 'The signed wallet must match wallet_address' });
+    }
 
-  if (!wallet_address) {
-    return res.status(400).json({ error: 'wallet_address is required' });
+    const role = req.body.role || 'customer';
+    if (!['customer', 'producer'].includes(role)) {
+      return res.status(400).json({ error: 'Only customer or producer profiles can be created here' });
+    }
+    if (role === 'producer') await requireRegisteredProducer(wallet);
+
+    const profile = await saveProfile(wallet, {
+      full_name: req.body.full_name,
+      role,
+      email: req.body.email,
+      phone: req.body.phone,
+      organization_name: req.body.organization_name,
+    });
+    localProfiles.set(wallet.toLowerCase(), profile);
+    return res.status(200).json({ profile });
+  } catch (error) {
+    console.error('[profiles] Profile upsert failed:', error.message);
+    return res.status(error.status || 503).json({ error: error.message || 'Profile could not be saved' });
   }
+});
 
-  const cleanAddress = wallet_address.toLowerCase();
+router.post('/producer', async (req, res) => {
+  try {
+    const wallet = await verifyWalletSignature(req);
+    const businessName = String(req.body.organization_name || req.body.full_name || '').trim();
+    if (!businessName || businessName.length > 120) {
+      return res.status(400).json({ error: 'Business name must contain 1 to 120 characters' });
+    }
+    await requireRegisteredProducer(wallet);
+
+    const profile = await saveProfile(wallet, {
+      full_name: String(req.body.full_name || businessName).trim().slice(0, 120),
+      role: 'producer',
+      organization_name: businessName,
+    });
+    const { data: existingFarm, error: farmLookupError } = await supabase
+      .from('farms')
+      .select('id')
+      .eq('producer_id', profile.id)
+      .limit(1)
+      .maybeSingle();
+    if (farmLookupError) throw farmLookupError;
+
+    if (!existingFarm) {
+      const locationParts = String(req.body.location || '').split(',').map((part) => part.trim()).filter(Boolean);
+      const { error: farmError } = await supabase.from('farms').insert({
+        producer_id: profile.id,
+        farm_name: businessName,
+        region: (locationParts[0] || 'Unspecified').slice(0, 120),
+        state: (locationParts.slice(1).join(', ') || 'Unspecified').slice(0, 120),
+      });
+      if (farmError) throw farmError;
+    }
+
+    localProfiles.set(wallet.toLowerCase(), profile);
+    return res.status(200).json({ profile });
+  } catch (error) {
+    console.error('[profiles] Producer profile sync failed:', error.message);
+    return res.status(error.status || 503).json({ error: error.message || 'Producer profile could not be synced' });
+  }
+});
+
+async function requireRegisteredProducer(wallet) {
+  if (!supabase) {
+    const error = new Error('Database is not configured');
+    error.status = 503;
+    throw error;
+  }
+  const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC_URL);
+  const registry = new ethers.Contract(PRODUCER_REGISTRY_ADDRESS, PRODUCER_REGISTRY_ABI, provider);
+  const info = await registry.getProducer(wallet);
+  if (![1, 2].includes(Number(info.status))) {
+    const error = new Error('Wallet must be registered and not suspended in ProducerRegistry');
+    error.status = 403;
+    throw error;
+  }
+}
+
+async function saveProfile(wallet, values) {
+  if (!supabase) {
+    const error = new Error('Database is not configured');
+    error.status = 503;
+    throw error;
+  }
   const profileRecord = {
-    id: `prof-${Date.now()}`,
-    wallet_address: cleanAddress,
-    full_name: full_name || 'PalmChain Operator',
-    role: role || 'producer',
-    email: email || `${cleanAddress.slice(0, 8)}@palmchain.io`,
-    phone: phone || '+91 94420 00000',
-    organization_name: organization_name || 'Palmyrah Collective',
+    wallet_address: wallet.toLowerCase(),
+    full_name: String(values.full_name || 'PalmChain User').trim().slice(0, 120),
+    role: values.role,
+    email: values.email || `${wallet.slice(2, 10).toLowerCase()}@palmchain.io`,
+    phone: values.phone || null,
+    organization_name: values.organization_name || null,
     updated_at: new Date().toISOString(),
   };
-
-  // Always save to memory store
-  localProfiles.set(cleanAddress, profileRecord);
-
-  // Attempt Supabase
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .upsert(
-          {
-            wallet_address: cleanAddress,
-            full_name: profileRecord.full_name,
-            role: profileRecord.role,
-            email: profileRecord.email,
-            phone: profileRecord.phone,
-            organization_name: profileRecord.organization_name,
-          },
-          { onConflict: 'wallet_address' }
-        )
-        .select()
-        .single();
-
-      if (!error && data) {
-        return res.status(200).json({ profile: data });
-      }
-    } catch (err) {
-      console.warn('[profiles] Supabase upsert notice:', err.message);
-    }
-  }
-
-  res.status(200).json({ profile: profileRecord });
-});
+  const { data, error } = await supabase
+    .from('profiles')
+    .upsert(profileRecord, { onConflict: 'wallet_address' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
 
 /**
  * POST /api/profiles/verify-producer-onchain
- * Admin helper to verify a registered producer wallet on Sepolia ProducerRegistry.
+ * Disabled: producer verification must be performed by the on-chain registry administrator.
  */
 router.post('/verify-producer-onchain', async (req, res) => {
-  const { wallet_address } = req.body;
-  if (!wallet_address || !ethers.isAddress(wallet_address)) {
-    return res.status(400).json({ error: 'Valid wallet_address is required' });
-  }
-
-  try {
-    const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC_URL);
-    const adminSigner = new ethers.Wallet(ADMIN_PRIVATE_KEY, provider);
-
-    const abi = [
-      'function registerProducer(string name) external',
-      'function verifyProducer(address producer) external',
-      'function isVerifiedProducer(address producer) view returns (bool)',
-      'function getProducer(address producer) view returns (tuple(address wallet, string name, uint8 status, uint256 registeredAt, uint256 verifiedAt))',
-    ];
-    const registry = new ethers.Contract(PRODUCER_REGISTRY_ADDRESS, abi, adminSigner);
-
-    const isAlreadyVerified = await registry.isVerifiedProducer(wallet_address);
-    if (isAlreadyVerified) {
-      return res.json({
-        success: true,
-        alreadyVerified: true,
-        message: `Wallet ${wallet_address} is already a verified producer on Sepolia.`,
-      });
-    }
-
-    const info = await registry.getProducer(wallet_address);
-    // If not registered yet, register first
-    if (Number(info.status) === 0) {
-      // Wallet must call registerProducer or admin can verify directly if allowed
-      return res.status(400).json({
-        error: 'Wallet is NotRegistered. Please click "Register on ProducerRegistry" in MetaMask first.',
-        status: 0,
-      });
-    }
-
-    // Call verifyProducer(wallet_address)
-    const tx = await registry.verifyProducer(wallet_address);
-    const receipt = await tx.wait(1);
-
-    res.json({
-      success: true,
-      transactionHash: tx.hash,
-      blockNumber: receipt.blockNumber,
-      message: `Wallet ${wallet_address} has been verified by Admin on Sepolia.`,
-    });
-  } catch (err) {
-    console.error('[profiles] verify-producer-onchain error:', err);
-    res.status(500).json({ error: err.message || 'Failed to verify producer on Sepolia' });
-  }
+  return res.status(410).json({ error: 'Producer verification must be completed by the ProducerRegistry administrator' });
 });
 
 export default router;
