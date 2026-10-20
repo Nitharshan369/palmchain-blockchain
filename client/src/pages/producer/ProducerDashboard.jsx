@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Sprout, 
@@ -13,16 +13,37 @@ import {
   Droplets,
   ArrowUpRight,
   ShieldCheck,
-  Clock
+  Clock,
+  RefreshCw
 } from 'lucide-react';
 import { mockBatches, mockTrees, mockOrders } from '../../data/mockData';
 import StatusBadge from '../../components/common/StatusBadge';
 import QRPreviewModal from '../../components/common/QRPreviewModal';
+import { batchesApi } from '../../lib/api';
 
 export default function ProducerDashboard() {
   const [selectedBatchForQr, setSelectedBatchForQr] = useState(null);
+  const [batchesList, setBatchesList] = useState(Object.values(mockBatches));
+  const [loadingBatches, setLoadingBatches] = useState(false);
 
-  const batchesList = Object.values(mockBatches);
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchBatches() {
+      setLoadingBatches(true);
+      try {
+        const res = await batchesApi.list();
+        if (!cancelled && res && Array.isArray(res.batches) && res.batches.length > 0) {
+          setBatchesList(res.batches);
+        }
+      } catch (err) {
+        console.warn('Could not fetch remote batches, using local store:', err);
+      } finally {
+        if (!cancelled) setLoadingBatches(false);
+      }
+    }
+    fetchBatches();
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <div className="space-y-8">
@@ -199,37 +220,55 @@ export default function ProducerDashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-cream-100 text-stone-700">
-              {batchesList.map((batch) => (
-                <tr key={batch.batchId} className="hover:bg-cream-50/50 transition-colors">
-                  <td className="py-4 px-6 font-mono font-bold text-earth-950">
-                    {batch.batchId}
-                  </td>
-                  <td className="py-4 px-6">{batch.harvestDate}</td>
-                  <td className="py-4 px-6">{batch.form}</td>
-                  <td className="py-4 px-6 font-mono font-semibold">{batch.outputKg} kg</td>
-                  <td className="py-4 px-6 font-mono font-semibold text-blue-700">{batch.sapBrix}° Bx</td>
-                  <td className="py-4 px-6">
-                    <StatusBadge status={batch.status} />
-                  </td>
-                  <td className="py-4 px-6 text-right space-x-2">
-                    <button
-                      onClick={() => setSelectedBatchForQr(batch)}
-                      className="px-2.5 py-1.5 rounded-lg border border-cream-300 hover:bg-cream-100 font-semibold text-stone-700 inline-flex items-center space-x-1"
-                      title="Inspect Packaging QR"
-                    >
-                      <QrCode className="w-3.5 h-3.5" />
-                      <span>QR</span>
-                    </button>
-                    <Link
-                      to={`/verify/${batch.batchId}`}
-                      className="px-2.5 py-1.5 rounded-lg bg-forest-100 text-forest-800 hover:bg-forest-200 font-semibold inline-flex items-center space-x-1"
-                    >
-                      <span>Verify</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+              {batchesList.map((batch) => {
+                const batchId = batch.batchId || batch.batch_number;
+                const harvestDate = batch.harvestDate || batch.production_date || batch.created_at?.slice(0, 10) || '2026-10-20';
+                const form = batch.form || 'Solid Blocks';
+                const outputKg = batch.outputKg || batch.jaggery_kg || batch.total_quantity_kg || 120;
+                const sapBrix = batch.sapBrix || (batch.neera_liters ? '15.2' : '15.0');
+                const status = batch.status || batch.lifecycle_status || 'created';
+                const dataHash = batch.dataHash || batch.data_hash || batch.hash;
+
+                return (
+                  <tr key={batchId} className="hover:bg-cream-50/50 transition-colors">
+                    <td className="py-4 px-6 font-mono font-bold text-earth-950">
+                      {batchId}
+                    </td>
+                    <td className="py-4 px-6">{harvestDate}</td>
+                    <td className="py-4 px-6">{form}</td>
+                    <td className="py-4 px-6 font-mono font-semibold">{outputKg} kg</td>
+                    <td className="py-4 px-6 font-mono font-semibold text-blue-700">{sapBrix}° Bx</td>
+                    <td className="py-4 px-6">
+                      <StatusBadge status={status} />
+                    </td>
+                    <td className="py-4 px-6 text-right space-x-2">
+                      <button
+                        onClick={() => setSelectedBatchForQr({
+                          batchId,
+                          productTitle: batch.productTitle || batch.product_title || 'Artisanal Pure Palm Jaggery',
+                          producerName: batch.producerName || batch.producer_name || 'Murugan Natural Palmyrah Cooperative',
+                          groveLocation: batch.groveLocation || batch.grove_location || 'Tenkasi Heritage Grove, TN',
+                          productionDate: harvestDate,
+                          netWeight: `${outputKg} kg`,
+                          sha256Hash: dataHash
+                        })}
+                        className="px-2.5 py-1.5 rounded-lg border border-cream-300 hover:bg-cream-100 font-semibold text-stone-700 inline-flex items-center space-x-1"
+                        title="Packaging QR Label & Print"
+                      >
+                        <QrCode className="w-3.5 h-3.5" />
+                        <span>QR</span>
+                      </button>
+                      <Link
+                        to={`/verify/${batchId}`}
+                        className="px-2.5 py-1.5 rounded-lg bg-forest-100 text-forest-800 hover:bg-forest-200 font-semibold inline-flex items-center space-x-1"
+                      >
+                        <span>Verify</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -243,6 +282,10 @@ export default function ProducerDashboard() {
           batchId={selectedBatchForQr.batchId}
           productTitle={selectedBatchForQr.productTitle}
           producerName={selectedBatchForQr.producerName}
+          groveLocation={selectedBatchForQr.groveLocation}
+          productionDate={selectedBatchForQr.productionDate}
+          netWeight={selectedBatchForQr.netWeight}
+          sha256Hash={selectedBatchForQr.sha256Hash}
         />
       )}
     </div>

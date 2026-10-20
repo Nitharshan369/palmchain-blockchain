@@ -57,3 +57,25 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #BC9651;
 }
+
+/* Print-friendly packaging label rules */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  #printable-packaging-label, #printable-packaging-label * {
+    visibility: visible !important;
+  }
+  #printable-packaging-label {
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    margin: 0 !important;
+    padding: 24px !important;
+    background: white !important;
+    z-index: 999999 !important;
+    display: block !important;
+  }
+}

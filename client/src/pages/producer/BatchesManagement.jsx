@@ -204,9 +204,17 @@ export default function BatchesManagement() {
                       </td>
                       <td className="py-4 px-6 text-right space-x-2">
                         <button
-                          onClick={() => setSelectedBatchForQr({ batchId: batchCode, productTitle: 'Artisanal Pure Palm Jaggery', producerName: 'PalmChain Producer' })}
+                          onClick={() => setSelectedBatchForQr({ 
+                            batchId: batchCode, 
+                            productTitle: b.productTitle || b.product_title || 'Artisanal Pure Palm Jaggery', 
+                            producerName: b.producerName || b.producer_name || 'Murugan Natural Palmyrah Cooperative',
+                            groveLocation: b.groveLocation || b.grove_location || 'Tenkasi Heritage Grove, TN',
+                            productionDate: b.productionDate || b.harvestDate || b.production_date || b.harvest_date || '2026-10-20',
+                            netWeight: `${jaggery} kg`,
+                            sha256Hash: hash
+                          })}
                           className="px-2.5 py-1.5 rounded-lg border border-cream-300 hover:bg-cream-100 font-semibold text-stone-700 inline-flex items-center space-x-1"
-                          title="Packaging QR Label"
+                          title="Packaging QR Label & Print"
                         >
                           <QrCode className="w-3.5 h-3.5" />
                           <span>QR</span>
@@ -236,6 +244,10 @@ export default function BatchesManagement() {
           batchId={selectedBatchForQr.batchId}
           productTitle={selectedBatchForQr.productTitle}
           producerName={selectedBatchForQr.producerName}
+          groveLocation={selectedBatchForQr.groveLocation}
+          productionDate={selectedBatchForQr.productionDate}
+          netWeight={selectedBatchForQr.netWeight}
+          sha256Hash={selectedBatchForQr.sha256Hash}
         />
       )}
     </div>

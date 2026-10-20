@@ -143,4 +143,23 @@ export function getBatchRegistryWithSigner(signer) {
   return new ethers.Contract(CONTRACT_ADDRESSES.batchRegistry, BatchRegistryABI, signer);
 }
 
+/**
+ * Execute a read-only contract query with automatic fallback across multiple Sepolia RPCs.
+ * Ensures zero-failure read access even when public or free-tier RPCs throttle.
+ */
+export async function executeWithRpcFallback(fn) {
+  let lastError = null;
+  for (const rpcUrl of SEPOLIA_NETWORK_CONFIG.rpcUrls) {
+    if (!rpcUrl) continue;
+    try {
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      return await fn(provider);
+    } catch (err) {
+      lastError = err;
+      console.warn(`[contracts] RPC ${rpcUrl} notice: ${err.message}. Trying next fallback...`);
+    }
+  }
+  throw lastError || new Error('All configured Sepolia RPC providers failed.');
+}
+
 export { ProducerRegistryABI, BatchRegistryABI };
