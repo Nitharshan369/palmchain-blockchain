@@ -4,6 +4,7 @@ import { ExternalLink, RefreshCw, ShieldAlert } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useWallet } from '../../context/WalletContext';
 import { productsApi } from '../../lib/api';
+import { operationsApi } from '../../lib/api';
 import {
   getPaymentEscrowReadOnly,
   getPaymentEscrowWithSigner,
@@ -27,6 +28,7 @@ export default function EscrowOrders() {
   const [workingOrder, setWorkingOrder] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [reviewDraft, setReviewDraft] = useState({});
 
   const loadOrders = useCallback(async () => {
     if (!address) {
@@ -106,6 +108,23 @@ export default function EscrowOrders() {
     } finally {
       setWorkingOrder('');
     }
+  };
+
+  const submitReview = async (order) => {
+    const draft = reviewDraft[order.id] || {};
+    setWorkingOrder(order.id); setError(''); setNotice('');
+    try {
+      const signer = await getSigner();
+      await operationsApi.createReview({
+        product_id: order.product_id,
+        escrow_order_id: order.id,
+        rating: Number(draft.rating),
+        review_text: draft.text || '',
+      }, signer);
+      setNotice('Review submitted and recorded.');
+      setReviewDraft((current) => ({ ...current, [order.id]: { ...draft, submitted: true } }));
+    } catch (reviewError) { setError(reviewError.message || 'Review could not be submitted.'); }
+    finally { setWorkingOrder(''); }
   };
 
   const wallet = address?.toLowerCase();
@@ -281,6 +300,18 @@ export default function EscrowOrders() {
                         Arbiter: refund buyer
                       </button>
                     </>
+                  )}
+                  {order.status === 4 && isBuyer && !reviewDraft[order.id]?.submitted && (
+                    <div className="w-full rounded-2xl border border-cream-200 bg-cream-50 p-4">
+                      <p className="mb-2 text-xs font-bold text-earth-950">Review completed purchase</p>
+                      <div className="flex flex-wrap gap-2">
+                        <select value={reviewDraft[order.id]?.rating || ''} onChange={(event) => setReviewDraft((current) => ({ ...current, [order.id]: { ...current[order.id], rating: event.target.value } }))} className="rounded-xl border border-cream-300 px-3 py-2 text-xs">
+                          <option value="">Rating</option><option value="5">5 — Excellent</option><option value="4">4 — Good</option><option value="3">3 — Average</option><option value="2">2 — Poor</option><option value="1">1 — Bad</option>
+                        </select>
+                        <input value={reviewDraft[order.id]?.text || ''} onChange={(event) => setReviewDraft((current) => ({ ...current, [order.id]: { ...current[order.id], text: event.target.value } }))} placeholder="Optional review" className="min-w-64 flex-1 rounded-xl border border-cream-300 px-3 py-2 text-xs" maxLength={2000}/>
+                        <button type="button" disabled={busy || !reviewDraft[order.id]?.rating} onClick={() => submitReview(order)} className="rounded-xl bg-forest-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Submit review</button>
+                      </div>
+                    </div>
                   )}
                   {order.product && (
                     <Link

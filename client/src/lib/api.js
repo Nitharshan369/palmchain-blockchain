@@ -75,6 +75,38 @@ async function producerRequest(method, path, body, signer, resource = '/products
   });
 }
 
+export async function signedWalletRequest(method, path, body, signer, signaturePath = path.replace(/^\/operations/, '')) {
+  if (!signer) throw new Error('Connect MetaMask to authorize this request.');
+  const timestamp = Date.now();
+  const nonce = crypto.randomUUID();
+  const signedBody = body || {};
+  const signature = await signer.signMessage(JSON.stringify({
+    application: 'PalmChain Marketplace',
+    version: 1,
+    method,
+    path: signaturePath,
+    timestamp,
+    nonce,
+    body: signedBody,
+  }));
+  return request(method, path, body, {
+    'X-PalmChain-Wallet': await signer.getAddress(),
+    'X-PalmChain-Timestamp': String(timestamp),
+    'X-PalmChain-Nonce': nonce,
+    'X-PalmChain-Signature': signature,
+  });
+}
+
+export const operationsApi = {
+  verifierQueue: (signer) => signedWalletRequest('GET', '/operations/verifier/queue', undefined, signer),
+  verifierDecision: (batchNumber, body, signer) => signedWalletRequest('POST', `/operations/verifier/batches/${batchNumber}/decision`, body, signer),
+  adminOverview: (signer) => signedWalletRequest('GET', '/operations/admin/overview', undefined, signer),
+  adminPermission: (body, signer) => signedWalletRequest('POST', '/operations/admin/permissions', body, signer),
+  producerAnalytics: (signer) => signedWalletRequest('GET', '/operations/analytics/producer', undefined, signer),
+  productReviews: (productId) => api.get(`/operations/reviews/product/${productId}`),
+  createReview: (body, signer) => signedWalletRequest('POST', '/operations/reviews', body, signer),
+};
+
 export const productsApi = {
   list: (params = {}) => {
     const qs = new URLSearchParams(params).toString();

@@ -10,6 +10,7 @@ import batchesRoutes from './routes/batches.routes.js';
 import productsRoutes from './routes/products.routes.js';
 import farmsRoutes from './routes/farms.routes.js';
 import verifyRoutes from './routes/verify.routes.js';
+import operationsRoutes from './routes/operations.routes.js';
 
 dotenv.config();
 
@@ -33,6 +34,7 @@ app.use('/api/batches', batchesRoutes);
 app.use('/api/products', productsRoutes);
 app.use('/api/farms', farmsRoutes);
 app.use('/api/verify', verifyRoutes);
+app.use('/api/operations', operationsRoutes);
 
 // ─── 404 Fallback ─────────────────────────────────────────────────────────────
 app.use((req, res) => {

@@ -133,6 +133,13 @@ export const BATCH_STATUS = {
   7: 'Recalled',
 };
 
+export const BATCH_REGISTRY_VERIFICATION_ABI = [
+  'function verifyBatch(string batchId)',
+  'function rejectBatch(string batchId,string reason)',
+  'event BatchVerified(string indexed batchId,address indexed verifier,uint256 timestamp)',
+  'event BatchRejected(string indexed batchId,address indexed verifier,string reason,uint256 timestamp)',
+];
+
 /**
  * Default public read-only fallback provider for Ethereum Sepolia
  */

@@ -6,7 +6,7 @@ import EmptyState from '../../components/common/EmptyState';
 import ProductionTimeline from '../../components/common/ProductionTimeline';
 import QRPreviewModal from '../../components/common/QRPreviewModal';
 import { useWallet } from '../../context/WalletContext';
-import { productsApi } from '../../lib/api';
+import { productsApi, operationsApi } from '../../lib/api';
 import {
   CONTRACT_ADDRESSES,
   getPaymentEscrowWithSigner,
@@ -30,6 +30,7 @@ export default function ProductDetail() {
   const [transactionHash, setTransactionHash] = useState('');
   const [settlementPending, setSettlementPending] = useState(false);
   const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [reviews, setReviews] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +44,9 @@ export default function ProductDetail() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+    operationsApi.productReviews(id).then((response) => {
+      if (!cancelled) setReviews(response.reviews || []);
+    }).catch(() => { if (!cancelled) setReviews([]); });
     return () => { cancelled = true; };
   }, [id]);
 
@@ -469,6 +473,14 @@ export default function ProductDetail() {
           </p>
         </div>
         <ProductionTimeline timeline={product.timeline} />
+      </section>
+
+      <section className="bg-white rounded-3xl p-6 border border-cream-200 shadow-warm">
+        <div className="flex items-center justify-between border-b border-cream-100 pb-3">
+          <h2 className="text-base font-bold text-earth-950">Customer reviews</h2>
+          <span className="text-xs text-stone-500">{reviews.length} confirmed review{reviews.length === 1 ? '' : 's'}</span>
+        </div>
+        {reviews.length === 0 ? <p className="pt-4 text-sm text-stone-500">No reviews from completed purchases yet.</p> : <div className="divide-y divide-cream-100">{reviews.map((review) => <article className="py-4" key={review.id}><div className="flex items-center justify-between text-sm"><strong>{review.customer?.full_name || 'Verified customer'}</strong><span className="font-bold text-gold-700">{'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}</span></div><p className="mt-1 text-sm text-stone-600">{review.review_text || 'No written comment.'}</p></article>)}</div>}
       </section>
 
       <QRPreviewModal
