@@ -9,6 +9,7 @@
     "contracts"
   ],
   "scripts": {
+    "build": "npm run build --prefix client",
     "dev:client": "npm run dev --prefix client",
     "dev:server": "npm run dev --prefix server",
     "build:client": "npm run build --prefix client",
